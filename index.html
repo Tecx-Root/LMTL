@@ -36,6 +36,22 @@
     .stage-card { width: min(440px, 100%); min-height: 420px; padding: 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; border: 1px solid #3a3f47; background: linear-gradient(180deg, #272a30 0%, #15171b 100%); }
     .stage-title { margin: 0; color: #fff; font-size: 22px; text-align: center; }
     .stage-desc { margin: 0; color: #8b94ab; font-size: 13px; line-height: 1.6; text-align: center; }
+    [hidden] { display: none !important; }
+    .story-panel { width: min(680px, 100%); min-height: 420px; padding: 24px; display: flex; flex-direction: column; gap: 18px; border: 1px solid #3a3f47; background: linear-gradient(180deg, #272a30 0%, #15171b 100%); cursor: pointer; }
+    .story-head { display: flex; gap: 18px; align-items: center; }
+    .story-portrait { width: 120px; height: 120px; flex: 0 0 120px; border: 1px solid #3a3f47; background: #15171b; overflow: hidden; }
+    .story-portrait img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .story-intro { flex: 1; min-width: 0; }
+    .story-intro h2 { margin: 0 0 6px; color: #fff; font-size: 20px; }
+    .story-intro p { margin: 0; color: #8b94ab; font-size: 13px; line-height: 1.6; }
+    .story-dialogue { flex: 1; min-height: 140px; padding: 18px 20px; border: 1px solid #3a3f47; background: rgba(0,0,0,.32); display: flex; flex-direction: column; gap: 10px; }
+    .story-speaker { color: #e8c766; font-size: 15px; font-weight: 700; }
+    .is-narration .story-speaker { color: #58d4c9; }
+    .story-line { margin: 0; color: #fff; font-size: 18px; line-height: 1.7; }
+    .is-narration .story-line { color: #d8def0; font-style: italic; }
+    .story-foot { display: flex; align-items: center; justify-content: space-between; }
+    .story-progress { color: #8b94ab; font: 12px Consolas, monospace; }
+    .story-next { padding: 6px 18px; border: 1px solid #4a5058; background: #2b2e34; color: #fff; cursor: pointer; }
   </style>
 </head>
 <body>
@@ -65,6 +81,24 @@
             <section class="stage-card" id="stage-card">
               <h2 class="stage-title" id="stage-title">源初</h2>
               <p class="stage-desc" id="stage-desc"></p>
+            </section>
+
+            <section class="story-panel" id="story-panel" hidden>
+              <div class="story-head">
+                <div class="story-portrait"><img src="assets/characters/Derterition.png" alt="Derterition"></div>
+                <div class="story-intro">
+                  <h2>第0章 · 源初</h2>
+                  <p>混沌初开，Derterition 在微光中追寻自己的身世。</p>
+                </div>
+              </div>
+              <div class="story-dialogue">
+                <div class="story-speaker" id="story-speaker"></div>
+                <p class="story-line" id="story-line"></p>
+              </div>
+              <div class="story-foot">
+                <span class="story-progress" id="story-progress"></span>
+                <button class="story-next" id="story-next" type="button">继续</button>
+              </div>
             </section>
           </main>
         </section>

@@ -44,11 +44,24 @@
   };
 
   var NEWS = [
-    { stageId: null, text: "混沌中出现了第一缕微光，Derterition 开始追寻自己的身世。" },
-    { stageId: "origin", text: "第1章 · 源初：万物之始，数值成为最初的锚点。" },
-    { stageId: "start", text: "第1章 · 起步：缓步前行，碎片与时间晶体被发现。" },
-    { stageId: "frontier", text: "第2章 · 拓荒：开辟前路，遗迹的轮廓逐渐清晰。" },
-    { stageId: "unknown", text: "第3章 · 未定：更远处的变化仍不可见。" }
+    "这是新闻列表里的第一条新闻",
+    "刚刚那条新闻是假的",
+    "下一条新闻绝对是真的",
+    "这是一句假话",
+    "1 + 1 = ( 系统未响应 )",
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+  ];
+
+  var OPENING_STORY = [
+    { speaker: "旁白", text: "混沌初开" },
+    { speaker: "旁白", text: "Derterition从昏迷中苏醒" },
+    { speaker: "Derterition", text: "......" },
+    { speaker: "Derterition", text: "这是哪里？" },
+    { speaker: "Derterition", text: "我怎么什么也想不起来了" },
+    { speaker: "Derterition", text: "我该去往何方？" },
+    { speaker: "旁白", text: "Derterition看到了一束微光" },
+    { speaker: "Derterition", text: "那是我的目标吗" },
+    { speaker: "旁白", text: "Derterition向微光移去" }
   ];
 
   var unlockedStages = new Set(["origin"]);
@@ -59,12 +72,22 @@
   var descEl = document.getElementById("stage-desc");
   var newsTextEl = document.getElementById("news-text");
   var newsTimeEl = document.getElementById("news-time");
+  var stageCardEl = document.getElementById("stage-card");
+  var storyPanelEl = document.getElementById("story-panel");
+  var storySpeakerEl = document.getElementById("story-speaker");
+  var storyLineEl = document.getElementById("story-line");
+  var storyProgressEl = document.getElementById("story-progress");
+  var storyNextEl = document.getElementById("story-next");
 
   var activeStageId = "origin";
   var newsQueue = [];
-  var newsCursor = 0;
   var newsAnim = null;
   var newsTimeout = null;
+  var lastNewsIndex = -1;
+  var storyLines = null;
+  var storyIndex = 0;
+  var storyActive = false;
+  var storyDone = null;
 
   function isUnlocked(id) {
     return unlockedStages.has(id);
@@ -137,6 +160,47 @@
     renderStage(stage);
   }
 
+  function renderStoryLine() {
+    var line = storyLines[storyIndex];
+    storySpeakerEl.textContent = line.speaker;
+    storyLineEl.textContent = line.text;
+    storyProgressEl.textContent = storyIndex + 1 + " / " + storyLines.length;
+    storyPanelEl.classList.toggle("is-narration", line.speaker === "旁白");
+  }
+
+  function endStory() {
+    if (!storyActive) return;
+    storyActive = false;
+    storyPanelEl.hidden = true;
+    stageCardEl.hidden = false;
+    var done = storyDone;
+    storyDone = null;
+    storyLines = null;
+    if (done) done();
+  }
+
+  function advanceStory() {
+    if (!storyActive) return;
+    storyIndex++;
+    if (storyIndex >= storyLines.length) {
+      endStory();
+      return;
+    }
+    renderStoryLine();
+  }
+
+  function startStory(lines, done) {
+    if (!lines || !lines.length) return;
+    storyLines = lines;
+    storyIndex = 0;
+    storyDone = done || null;
+    storyActive = true;
+    stageCardEl.hidden = true;
+    storyPanelEl.hidden = false;
+    renderStoryLine();
+    storyNextEl.focus();
+  }
+
   function stopNews() {
     window.clearTimeout(newsTimeout);
     newsTimeout = null;
@@ -147,11 +211,19 @@
     newsTextEl.textContent = "";
   }
 
+  function pickNewsIndex() {
+    if (newsQueue.length <= 1) return 0;
+    var index = Math.floor(Math.random() * newsQueue.length);
+    if (index === lastNewsIndex) index = (index + 1) % newsQueue.length;
+    lastNewsIndex = index;
+    return index;
+  }
+
   function playNextNews() {
     if (!newsQueue.length) return;
     stopNews();
 
-    newsTextEl.textContent = newsQueue[newsCursor].text;
+    newsTextEl.textContent = newsQueue[pickNewsIndex()];
     window.requestAnimationFrame(function () {
       var wrap = newsTextEl.parentElement;
       var wrapWidth = wrap.clientWidth;
@@ -170,7 +242,6 @@
       );
 
       newsAnim.onfinish = function () {
-        newsCursor = (newsCursor + 1) % newsQueue.length;
         newsTimeout = window.setTimeout(playNextNews, 300);
       };
     });
@@ -178,10 +249,8 @@
 
   function refreshNewsQueue() {
     stopNews();
-    newsQueue = NEWS.filter(function (entry) {
-      return entry.stageId === null || isUnlocked(entry.stageId);
-    });
-    newsCursor = 0;
+    newsQueue = NEWS.slice();
+    lastNewsIndex = -1;
     playNextNews();
   }
 
@@ -205,10 +274,29 @@
       String(now.getMinutes()).padStart(2, "0");
   }
 
+  storyNextEl.addEventListener("click", function (event) {
+    event.stopPropagation();
+    advanceStory();
+  });
+  storyPanelEl.addEventListener("click", advanceStory);
+  document.addEventListener("keydown", function (event) {
+    if (!storyActive) return;
+    if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+      event.preventDefault();
+      advanceStory();
+    } else if (event.key === "Escape") {
+      endStory();
+    }
+  });
+
   window.LMTL = {
     unlockStage: unlockStage,
     getUnlockedStages: function () {
       return Array.from(unlockedStages);
+    },
+    playStory: startStory,
+    replayOpening: function () {
+      startStory(OPENING_STORY);
     }
   };
 
@@ -216,4 +304,5 @@
   refreshNewsQueue();
   updateClock();
   window.setInterval(updateClock, 30000);
+  startStory(OPENING_STORY);
 })();
