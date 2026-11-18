@@ -51,7 +51,6 @@
     { stageId: "unknown", text: "第3章 · 未定：更远处的变化仍不可见。" }
   ];
 
-  var RESOURCE_ORDER = ["数值", "碎片", "时间晶体", "遗迹"];
   var unlockedStages = new Set(["origin"]);
 
   var tabsEl = document.getElementById("tabs");
@@ -75,39 +74,33 @@
   function renderTabs() {
     tabsEl.innerHTML = "";
     STAGES.forEach(function (stage, index) {
-      var unlocked = isUnlocked(stage.id);
+      if (!isUnlocked(stage.id)) return;
+
       var button = document.createElement("button");
       button.type = "button";
-      button.className =
-        "tab" + (stage.id === activeStageId ? " active" : "") + (unlocked ? "" : " locked");
-      button.disabled = !unlocked;
+      button.className = "tab" + (stage.id === activeStageId ? " active" : "");
       button.setAttribute("role", "tab");
       button.setAttribute("aria-selected", stage.id === activeStageId ? "true" : "false");
-      button.title = unlocked ? stage.title : "尚未解锁";
+      button.title = stage.title;
       button.dataset.stageId = stage.id;
       button.innerHTML =
         '<span class="tab-index">' +
         String(index + 1).padStart(2, "0") +
         "</span>" +
-        stage.tab +
-        (unlocked ? "" : '<span class="tab-lock">未解锁</span>');
-
-      if (unlocked) {
-        button.addEventListener("click", function () {
-          setActiveStage(stage.id);
-        });
-      }
+        stage.tab;
+      button.addEventListener("click", function () {
+        setActiveStage(stage.id);
+      });
       tabsEl.appendChild(button);
     });
   }
 
   function renderResources(stage) {
     resourcesEl.innerHTML = "";
-    RESOURCE_ORDER.forEach(function (name) {
+    stage.resources.forEach(function (name) {
       var meta = RESOURCE_META[name];
-      var unlocked = stage.resources.indexOf(name) !== -1;
       var card = document.createElement("article");
-      card.className = "resource-card" + (unlocked ? "" : " locked");
+      card.className = "resource-card";
       card.innerHTML =
         '<div class="res-head"><span class="res-name">' +
         name +
@@ -116,7 +109,7 @@
         "</span></div>" +
         '<div class="res-value">0</div>' +
         '<div class="res-note">' +
-        (unlocked ? meta.note : "尚未解锁") +
+        meta.note +
         "</div>";
       resourcesEl.appendChild(card);
     });

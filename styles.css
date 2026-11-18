@@ -239,7 +239,7 @@ body {
   transition: color 0.18s ease, background 0.18s ease;
 }
 
-.tab:hover:not(.locked) {
+.tab:hover {
   color: var(--text);
 }
 
@@ -249,21 +249,10 @@ body {
   background: linear-gradient(180deg, transparent, var(--accent-soft));
 }
 
-.tab.locked {
-  opacity: 0.38;
-  cursor: not-allowed;
-}
-
 .tab-index {
   margin-right: 10px;
   font: 12px Consolas, "Courier New", monospace;
   opacity: 0.6;
-}
-
-.tab-lock {
-  margin-left: 10px;
-  font-size: 12px;
-  letter-spacing: 0.08em;
 }
 
 .tabs-hint {
@@ -276,7 +265,7 @@ body {
 .resource-bar {
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: var(--gap);
 }
 
@@ -298,14 +287,6 @@ body {
   width: 3px;
   background: var(--accent);
   opacity: 0.75;
-}
-
-.resource-card.locked {
-  opacity: 0.4;
-}
-
-.resource-card.locked::before {
-  background: var(--muted);
 }
 
 .res-head {
@@ -331,10 +312,6 @@ body {
   margin-top: 10px;
   color: var(--accent);
   font: 600 34px/1 Consolas, "Courier New", monospace;
-}
-
-.resource-card.locked .res-value {
-  color: var(--muted);
 }
 
 .res-note {
@@ -516,10 +493,6 @@ body {
   .name-meta,
   .tabs-hint {
     display: none;
-  }
-
-  .resource-bar {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .main-head {
