@@ -7,80 +7,56 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="app-shell">
-
-    <!-- 1. 游戏名称栏 -->
-    <header class="name-bar panel" id="name-bar">
-      <div class="brand">
-        <div class="brand-mark" aria-hidden="true"><span>L</span></div>
-        <div class="brand-text">
-          <h1>LIMITLESS <span class="brand-abbr">LMTL</span></h1>
-          <p class="brand-sub">跨越无界 · 于混沌中追寻身世</p>
+  <div id="app">
+    <div class="game">
+      <!-- 顶栏：游戏名称栏 + 新闻栏 -->
+      <header class="topbar">
+        <div class="game-title">LMTL<small>Limitless 跨越无界</small></div>
+        <div class="news-box">
+          <div class="news-wrap"><span class="news-text" id="news-text"></span></div>
+          <span class="news-time" id="news-time">--:--</span>
         </div>
-      </div>
-      <div class="name-meta">
-        <span class="meta-label">主角</span>
-        <span class="meta-value">Derterition</span>
-        <span class="meta-divider" aria-hidden="true"></span>
-        <span class="meta-label">状态</span>
-        <span class="meta-value">苏醒 / 探索中</span>
-      </div>
-    </header>
+      </header>
 
-    <!-- 2. 新闻栏 -->
-    <section class="news-bar panel" id="news-bar" aria-label="新闻栏">
-      <div class="news-label"><span class="pulse-dot" aria-hidden="true"></span>新闻</div>
-      <div class="news-viewport" id="news-viewport"></div>
-      <span class="news-time" id="news-time">--:--</span>
-    </section>
+      <div class="body">
+        <!-- 标签页栏：侧边竖排导航 -->
+        <nav class="sidebar" id="sidebar" aria-label="阶段导航"></nav>
 
-    <!-- 3. 标签页栏 -->
-    <nav class="tabs-bar panel" id="tabs-bar" aria-label="阶段标签">
-      <div class="tabs" id="tabs" role="tablist"></div>
-      <div class="tabs-hint">阶段进度 · 随探索推进解锁</div>
-    </nav>
-
-    <!-- 4. 资源栏 -->
-    <section class="resource-bar" id="resource-bar" aria-label="资源栏"></section>
-
-    <!-- 5. 主要内容栏 -->
-    <main class="main-bar panel" id="main-bar" aria-label="主要内容栏">
-      <div class="main-head">
-        <div>
-          <div class="main-eyebrow" id="main-eyebrow">当前阶段</div>
-          <h2 id="main-title">源初</h2>
-        </div>
-        <p class="main-desc" id="main-desc">万物之始。</p>
-      </div>
-
-      <div class="main-grid">
-        <section class="content-card">
-          <div class="card-head">
-            <h3>核心行动</h3>
-            <span class="card-tag">待接入</span>
+        <section class="main-wrap">
+          <!-- 资源栏 -->
+          <div class="res-bar-wrap">
+            <div class="res-bar" id="resource-bar"></div>
           </div>
-          <p class="card-note">此处预留阶段主要交互区域。</p>
-          <div class="action-placeholder">
-            <span class="placeholder-glyph" aria-hidden="true"></span>
-            <span>行动区域占位</span>
-          </div>
-        </section>
 
-        <section class="content-card">
-          <div class="card-head">
-            <h3>阶段记录</h3>
-            <span class="card-tag">记录</span>
-          </div>
-          <ul class="log-list">
-            <li><span class="log-dot" aria-hidden="true"></span>在混沌中醒来，记忆一片空白。</li>
-            <li><span class="log-dot" aria-hidden="true"></span>顺着微光，迈出探索的第一步。</li>
-            <li class="log-muted"><span class="log-dot" aria-hidden="true"></span>更多记录将随阶段推进出现。</li>
-          </ul>
+          <!-- 主要内容栏 -->
+          <main class="main" id="main">
+            <section class="stage-card" id="stage-card">
+              <div class="stage-top">
+                <div class="stage-actions left" id="stage-actions-left"></div>
+                <h2 class="stage-title" id="stage-title">源初</h2>
+                <div class="stage-actions right" id="stage-actions-right"></div>
+              </div>
+
+              <div class="core-display">
+                <div class="core-graphic" aria-hidden="true">
+                  <span class="ring ring-a"></span>
+                  <span class="ring ring-b"></span>
+                  <span class="ring ring-c"></span>
+                </div>
+                <div class="core-value" id="core-value">0</div>
+                <div class="core-label" id="core-label">数值</div>
+              </div>
+
+              <div class="stage-bottom">
+                <p class="stage-desc" id="stage-desc"></p>
+                <button class="stage-btn" id="stage-btn" type="button">积蓄数值</button>
+                <p class="stage-hint">当前为界面框架，机制待接入。</p>
+              </div>
+            </section>
+          </main>
         </section>
       </div>
-    </main>
-
-    <footer class="app-footer">LMTL · Limitless — 跨越无界</footer>
+    </div>
   </div>
 
   <script src="app.js"></script>

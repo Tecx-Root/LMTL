@@ -37,10 +37,10 @@
   ];
 
   var RESOURCE_META = {
-    "数值": { key: "VALUE", note: "基础积累" },
-    "碎片": { key: "SHARD", note: "探索所得" },
-    "时间晶体": { key: "CHRONO", note: "时间沉淀" },
-    "遗迹": { key: "RELIC", note: "远古遗留" }
+    "数值": { cls: "res-l0", note: "基础积累" },
+    "碎片": { cls: "res-l1", note: "探索所得" },
+    "时间晶体": { cls: "res-l2", note: "时间沉淀" },
+    "遗迹": { cls: "res-l3", note: "远古遗留" }
   };
 
   var NEWS = [
@@ -53,45 +53,69 @@
 
   var unlockedStages = new Set(["origin"]);
 
-  var tabsEl = document.getElementById("tabs");
+  var sidebarEl = document.getElementById("sidebar");
   var resourcesEl = document.getElementById("resource-bar");
-  var eyebrowEl = document.getElementById("main-eyebrow");
-  var titleEl = document.getElementById("main-title");
-  var descEl = document.getElementById("main-desc");
-  var newsViewportEl = document.getElementById("news-viewport");
+  var titleEl = document.getElementById("stage-title");
+  var descEl = document.getElementById("stage-desc");
+  var coreValueEl = document.getElementById("core-value");
+  var coreLabelEl = document.getElementById("core-label");
+  var leftActionsEl = document.getElementById("stage-actions-left");
+  var rightActionsEl = document.getElementById("stage-actions-right");
+  var stageBtnEl = document.getElementById("stage-btn");
+  var newsTextEl = document.getElementById("news-text");
   var newsTimeEl = document.getElementById("news-time");
 
   var activeStageId = "origin";
   var newsQueue = [];
   var newsCursor = 0;
-  var newsItem = null;
+  var newsAnim = null;
   var newsTimeout = null;
 
   function isUnlocked(id) {
     return unlockedStages.has(id);
   }
 
-  function renderTabs() {
-    tabsEl.innerHTML = "";
-    STAGES.forEach(function (stage, index) {
-      if (!isUnlocked(stage.id)) return;
+  function firstUnlockedId() {
+    for (var i = 0; i < STAGES.length; i++) {
+      if (isUnlocked(STAGES[i].id)) return STAGES[i].id;
+    }
+    return null;
+  }
 
-      var button = document.createElement("button");
-      button.type = "button";
-      button.className = "tab" + (stage.id === activeStageId ? " active" : "");
-      button.setAttribute("role", "tab");
-      button.setAttribute("aria-selected", stage.id === activeStageId ? "true" : "false");
-      button.title = stage.title;
-      button.dataset.stageId = stage.id;
-      button.innerHTML =
-        '<span class="tab-index">' +
-        String(index + 1).padStart(2, "0") +
-        "</span>" +
-        stage.tab;
-      button.addEventListener("click", function () {
+  function makeActionButton(text, enabled) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "action-btn";
+    button.textContent = text;
+    button.disabled = !enabled;
+    if (!enabled) button.title = "尚未解锁";
+    return button;
+  }
+
+  function renderSidebar() {
+    sidebarEl.innerHTML = "";
+
+    var group = document.createElement("a");
+    group.href = "javascript:void(0)";
+    group.className = "nav-item nav-top";
+    group.textContent = "阶段";
+    group.addEventListener("click", function () {
+      var first = firstUnlockedId();
+      if (first) setActiveStage(first);
+    });
+    sidebarEl.appendChild(group);
+    sidebarEl.appendChild(document.createElement("div")).className = "nav-sep";
+
+    STAGES.forEach(function (stage) {
+      if (!isUnlocked(stage.id)) return;
+      var link = document.createElement("a");
+      link.href = "javascript:void(0)";
+      link.className = "nav-item nav-sub" + (stage.id === activeStageId ? " active" : "");
+      link.textContent = stage.tab;
+      link.addEventListener("click", function () {
         setActiveStage(stage.id);
       });
-      tabsEl.appendChild(button);
+      sidebarEl.appendChild(link);
     });
   }
 
@@ -99,20 +123,33 @@
     resourcesEl.innerHTML = "";
     stage.resources.forEach(function (name) {
       var meta = RESOURCE_META[name];
-      var card = document.createElement("article");
-      card.className = "resource-card";
-      card.innerHTML =
-        '<div class="res-head"><span class="res-name">' +
-        name +
-        '</span><span class="res-key">' +
-        meta.key +
-        "</span></div>" +
-        '<div class="res-value">0</div>' +
-        '<div class="res-note">' +
-        meta.note +
-        "</div>";
-      resourcesEl.appendChild(card);
+      var cell = document.createElement("div");
+      cell.className = "res-cell " + meta.cls;
+      cell.innerHTML =
+        '<div class="res-name">' + name + "</div>" +
+        '<div class="res-amount">0</div>' +
+        '<div class="res-total">累计 0</div>' +
+        '<div class="res-rate">+0/秒</div>';
+      resourcesEl.appendChild(cell);
     });
+  }
+
+  function renderStage(stage) {
+    var primary = stage.resources[0] || "未知";
+
+    titleEl.textContent = stage.tab;
+    descEl.textContent = stage.chapter + " · " + stage.title;
+    coreValueEl.textContent = "0";
+    coreLabelEl.textContent = primary;
+    stageBtnEl.textContent = "积蓄" + (primary === "未知" ? "数值" : primary);
+
+    leftActionsEl.innerHTML = "";
+    leftActionsEl.appendChild(makeActionButton("积蓄", true));
+    leftActionsEl.appendChild(makeActionButton("观察", true));
+
+    rightActionsEl.innerHTML = "";
+    rightActionsEl.appendChild(makeActionButton("锁定", false));
+    rightActionsEl.appendChild(makeActionButton("锁定", false));
   }
 
   function setActiveStage(id) {
@@ -123,61 +160,52 @@
     if (!stage) return;
 
     activeStageId = id;
-    Array.prototype.forEach.call(tabsEl.querySelectorAll(".tab"), function (tab) {
-      var isActive = tab.dataset.stageId === id;
-      tab.classList.toggle("active", isActive);
-      tab.setAttribute("aria-selected", isActive ? "true" : "false");
-    });
-
-    eyebrowEl.textContent = stage.chapter + " · 当前阶段";
-    titleEl.textContent = stage.title;
-    descEl.textContent = stage.desc;
+    renderSidebar();
     renderResources(stage);
+    renderStage(stage);
   }
 
-  function stopCurrentNews() {
+  function stopNews() {
     window.clearTimeout(newsTimeout);
     newsTimeout = null;
-    if (newsItem) {
-      newsItem.remove();
-      newsItem = null;
+    if (newsAnim) {
+      newsAnim.cancel();
+      newsAnim = null;
     }
+    newsTextEl.textContent = "";
   }
 
   function playNextNews() {
     if (!newsQueue.length) return;
-    stopCurrentNews();
+    stopNews();
 
-    var entry = newsQueue[newsCursor];
-    var item = document.createElement("span");
-    item.className = "news-item";
-    item.textContent = entry.text;
-    newsViewportEl.appendChild(item);
-
-    var viewportWidth = newsViewportEl.clientWidth;
-    var itemWidth = item.offsetWidth;
-    var duration = Math.max(6000, Math.round((viewportWidth + itemWidth) / 0.11));
-
-    item.style.setProperty("--start", viewportWidth + "px");
-    item.style.setProperty("--end", "-" + itemWidth + "px");
-    item.style.setProperty("--duration", duration + "ms");
-
-    newsItem = item;
+    newsTextEl.textContent = newsQueue[newsCursor].text;
     window.requestAnimationFrame(function () {
-      item.classList.add("scrolling");
-    });
+      var wrap = newsTextEl.parentElement;
+      var wrapWidth = wrap.clientWidth;
+      var textWidth = newsTextEl.offsetWidth;
 
-    item.addEventListener("animationend", function () {
-      if (newsItem !== item) return;
-      item.remove();
-      newsItem = null;
-      newsCursor = (newsCursor + 1) % newsQueue.length;
-      newsTimeout = window.setTimeout(playNextNews, 400);
+      newsAnim = newsTextEl.animate(
+        [
+          { transform: "translateX(" + wrapWidth + "px)" },
+          { transform: "translateX(" + -textWidth + "px)" }
+        ],
+        {
+          duration: Math.max(6000, (wrapWidth + textWidth) * 18),
+          iterations: 1,
+          easing: "linear"
+        }
+      );
+
+      newsAnim.onfinish = function () {
+        newsCursor = (newsCursor + 1) % newsQueue.length;
+        newsTimeout = window.setTimeout(playNextNews, 300);
+      };
     });
   }
 
   function refreshNewsQueue() {
-    stopCurrentNews();
+    stopNews();
     newsQueue = NEWS.filter(function (entry) {
       return entry.stageId === null || isUnlocked(entry.stageId);
     });
@@ -192,7 +220,7 @@
     if (!exists || isUnlocked(id)) return false;
 
     unlockedStages.add(id);
-    renderTabs();
+    renderSidebar();
     refreshNewsQueue();
     return true;
   }
@@ -212,7 +240,6 @@
     }
   };
 
-  renderTabs();
   setActiveStage(activeStageId);
   refreshNewsQueue();
   updateClock();
