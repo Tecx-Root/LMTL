@@ -74,6 +74,8 @@
   var newsTimeEl = document.getElementById("news-time");
   var stageCardEl = document.getElementById("stage-card");
   var storyPanelEl = document.getElementById("story-panel");
+  var storySkipEl = document.getElementById("story-skip");
+  var storyPortraitEl = document.getElementById("story-portrait");
   var storySpeakerEl = document.getElementById("story-speaker");
   var storyLineEl = document.getElementById("story-line");
   var storyProgressEl = document.getElementById("story-progress");
@@ -162,10 +164,12 @@
 
   function renderStoryLine() {
     var line = storyLines[storyIndex];
-    storySpeakerEl.textContent = line.speaker;
+    var narration = line.speaker === "旁白";
+    storySpeakerEl.textContent = narration ? "" : line.speaker;
     storyLineEl.textContent = line.text;
     storyProgressEl.textContent = storyIndex + 1 + " / " + storyLines.length;
-    storyPanelEl.classList.toggle("is-narration", line.speaker === "旁白");
+    storyPortraitEl.hidden = narration;
+    storyPanelEl.classList.toggle("is-narration", narration);
   }
 
   function endStory() {
@@ -274,6 +278,10 @@
       String(now.getMinutes()).padStart(2, "0");
   }
 
+  storySkipEl.addEventListener("click", function (event) {
+    event.stopPropagation();
+    endStory();
+  });
   storyNextEl.addEventListener("click", function (event) {
     event.stopPropagation();
     advanceStory();
