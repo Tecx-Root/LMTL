@@ -57,11 +57,6 @@
   var resourcesEl = document.getElementById("resource-bar");
   var titleEl = document.getElementById("stage-title");
   var descEl = document.getElementById("stage-desc");
-  var coreValueEl = document.getElementById("core-value");
-  var coreLabelEl = document.getElementById("core-label");
-  var leftActionsEl = document.getElementById("stage-actions-left");
-  var rightActionsEl = document.getElementById("stage-actions-right");
-  var stageBtnEl = document.getElementById("stage-btn");
   var newsTextEl = document.getElementById("news-text");
   var newsTimeEl = document.getElementById("news-time");
 
@@ -80,16 +75,6 @@
       if (isUnlocked(STAGES[i].id)) return STAGES[i].id;
     }
     return null;
-  }
-
-  function makeActionButton(text, enabled) {
-    var button = document.createElement("button");
-    button.type = "button";
-    button.className = "action-btn";
-    button.textContent = text;
-    button.disabled = !enabled;
-    if (!enabled) button.title = "尚未解锁";
-    return button;
   }
 
   function renderSidebar() {
@@ -135,21 +120,8 @@
   }
 
   function renderStage(stage) {
-    var primary = stage.resources[0] || "未知";
-
     titleEl.textContent = stage.tab;
     descEl.textContent = stage.chapter + " · " + stage.title;
-    coreValueEl.textContent = "0";
-    coreLabelEl.textContent = primary;
-    stageBtnEl.textContent = "积蓄" + (primary === "未知" ? "数值" : primary);
-
-    leftActionsEl.innerHTML = "";
-    leftActionsEl.appendChild(makeActionButton("积蓄", true));
-    leftActionsEl.appendChild(makeActionButton("观察", true));
-
-    rightActionsEl.innerHTML = "";
-    rightActionsEl.appendChild(makeActionButton("锁定", false));
-    rightActionsEl.appendChild(makeActionButton("锁定", false));
   }
 
   function setActiveStage(id) {
