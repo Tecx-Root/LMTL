@@ -44,41 +44,59 @@
   };
 
   var NEWS = [
-    "混沌中出现了第一缕微光，Derterition 开始追寻自己的身世。",
-    "第1章 · 源初：万物之始，数值成为最初的锚点。",
-    "第1章 · 起步：缓步前行，碎片与时间晶体被发现。",
-    "第2章 · 拓荒：开辟前路，遗迹的轮廓逐渐清晰。",
-    "第3章 · 未定：更远处的变化仍不可见。"
+    { stageId: null, text: "混沌中出现了第一缕微光，Derterition 开始追寻自己的身世。" },
+    { stageId: "origin", text: "第1章 · 源初：万物之始，数值成为最初的锚点。" },
+    { stageId: "start", text: "第1章 · 起步：缓步前行，碎片与时间晶体被发现。" },
+    { stageId: "frontier", text: "第2章 · 拓荒：开辟前路，遗迹的轮廓逐渐清晰。" },
+    { stageId: "unknown", text: "第3章 · 未定：更远处的变化仍不可见。" }
   ];
 
   var RESOURCE_ORDER = ["数值", "碎片", "时间晶体", "遗迹"];
+  var unlockedStages = new Set(["origin"]);
 
   var tabsEl = document.getElementById("tabs");
   var resourcesEl = document.getElementById("resource-bar");
   var eyebrowEl = document.getElementById("main-eyebrow");
   var titleEl = document.getElementById("main-title");
   var descEl = document.getElementById("main-desc");
-  var newsTextEl = document.getElementById("news-text");
-  var newsDotsEl = document.getElementById("news-dots");
+  var newsViewportEl = document.getElementById("news-viewport");
   var newsTimeEl = document.getElementById("news-time");
 
-  var activeStageId = STAGES[0].id;
-  var newsIndex = 0;
-  var newsTimer = null;
+  var activeStageId = "origin";
+  var newsQueue = [];
+  var newsCursor = 0;
+  var newsItem = null;
+  var newsTimeout = null;
+
+  function isUnlocked(id) {
+    return unlockedStages.has(id);
+  }
 
   function renderTabs() {
     tabsEl.innerHTML = "";
     STAGES.forEach(function (stage, index) {
+      var unlocked = isUnlocked(stage.id);
       var button = document.createElement("button");
       button.type = "button";
-      button.className = "tab" + (stage.id === activeStageId ? " active" : "");
+      button.className =
+        "tab" + (stage.id === activeStageId ? " active" : "") + (unlocked ? "" : " locked");
+      button.disabled = !unlocked;
       button.setAttribute("role", "tab");
       button.setAttribute("aria-selected", stage.id === activeStageId ? "true" : "false");
+      button.title = unlocked ? stage.title : "尚未解锁";
       button.dataset.stageId = stage.id;
-      button.innerHTML = '<span class="tab-index">' + String(index + 1).padStart(2, "0") + "</span>" + stage.tab;
-      button.addEventListener("click", function () {
-        setActiveStage(stage.id);
-      });
+      button.innerHTML =
+        '<span class="tab-index">' +
+        String(index + 1).padStart(2, "0") +
+        "</span>" +
+        stage.tab +
+        (unlocked ? "" : '<span class="tab-lock">未解锁</span>');
+
+      if (unlocked) {
+        button.addEventListener("click", function () {
+          setActiveStage(stage.id);
+        });
+      }
       tabsEl.appendChild(button);
     });
   }
@@ -91,14 +109,21 @@
       var card = document.createElement("article");
       card.className = "resource-card" + (unlocked ? "" : " locked");
       card.innerHTML =
-        '<div class="res-head"><span class="res-name">' + name + '</span><span class="res-key">' + meta.key + "</span></div>" +
+        '<div class="res-head"><span class="res-name">' +
+        name +
+        '</span><span class="res-key">' +
+        meta.key +
+        "</span></div>" +
         '<div class="res-value">0</div>' +
-        '<div class="res-note">' + (unlocked ? meta.note : "尚未解锁") + "</div>";
+        '<div class="res-note">' +
+        (unlocked ? meta.note : "尚未解锁") +
+        "</div>";
       resourcesEl.appendChild(card);
     });
   }
 
   function setActiveStage(id) {
+    if (!isUnlocked(id)) return;
     var stage = STAGES.find(function (item) {
       return item.id === id;
     });
@@ -117,50 +142,86 @@
     renderResources(stage);
   }
 
-  function showNews(index) {
-    newsIndex = (index + NEWS.length) % NEWS.length;
-    newsTextEl.classList.add("fading");
-    window.setTimeout(function () {
-      newsTextEl.textContent = NEWS[newsIndex];
-      newsTextEl.classList.remove("fading");
-    }, 220);
-    Array.prototype.forEach.call(newsDotsEl.children, function (dot, i) {
-      dot.classList.toggle("active", i === newsIndex);
+  function stopCurrentNews() {
+    window.clearTimeout(newsTimeout);
+    newsTimeout = null;
+    if (newsItem) {
+      newsItem.remove();
+      newsItem = null;
+    }
+  }
+
+  function playNextNews() {
+    if (!newsQueue.length) return;
+    stopCurrentNews();
+
+    var entry = newsQueue[newsCursor];
+    var item = document.createElement("span");
+    item.className = "news-item";
+    item.textContent = entry.text;
+    newsViewportEl.appendChild(item);
+
+    var viewportWidth = newsViewportEl.clientWidth;
+    var itemWidth = item.offsetWidth;
+    var duration = Math.max(6000, Math.round((viewportWidth + itemWidth) / 0.11));
+
+    item.style.setProperty("--start", viewportWidth + "px");
+    item.style.setProperty("--end", "-" + itemWidth + "px");
+    item.style.setProperty("--duration", duration + "ms");
+
+    newsItem = item;
+    window.requestAnimationFrame(function () {
+      item.classList.add("scrolling");
+    });
+
+    item.addEventListener("animationend", function () {
+      if (newsItem !== item) return;
+      item.remove();
+      newsItem = null;
+      newsCursor = (newsCursor + 1) % newsQueue.length;
+      newsTimeout = window.setTimeout(playNextNews, 400);
     });
   }
 
-  function renderNewsDots() {
-    NEWS.forEach(function (_, index) {
-      var dot = document.createElement("button");
-      dot.type = "button";
-      dot.className = "news-dot" + (index === 0 ? " active" : "");
-      dot.setAttribute("aria-label", "新闻 " + (index + 1));
-      dot.addEventListener("click", function () {
-        showNews(index);
-        restartNewsTimer();
-      });
-      newsDotsEl.appendChild(dot);
+  function refreshNewsQueue() {
+    stopCurrentNews();
+    newsQueue = NEWS.filter(function (entry) {
+      return entry.stageId === null || isUnlocked(entry.stageId);
     });
+    newsCursor = 0;
+    playNextNews();
   }
 
-  function restartNewsTimer() {
-    window.clearInterval(newsTimer);
-    newsTimer = window.setInterval(function () {
-      showNews(newsIndex + 1);
-    }, 6500);
+  function unlockStage(id) {
+    var exists = STAGES.some(function (stage) {
+      return stage.id === id;
+    });
+    if (!exists || isUnlocked(id)) return false;
+
+    unlockedStages.add(id);
+    renderTabs();
+    refreshNewsQueue();
+    return true;
   }
 
   function updateClock() {
     var now = new Date();
     newsTimeEl.textContent =
-      String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
+      String(now.getHours()).padStart(2, "0") +
+      ":" +
+      String(now.getMinutes()).padStart(2, "0");
   }
 
+  window.LMTL = {
+    unlockStage: unlockStage,
+    getUnlockedStages: function () {
+      return Array.from(unlockedStages);
+    }
+  };
+
   renderTabs();
-  renderNewsDots();
   setActiveStage(activeStageId);
-  newsTextEl.textContent = NEWS[0];
+  refreshNewsQueue();
   updateClock();
-  restartNewsTimer();
   window.setInterval(updateClock, 30000);
 })();
