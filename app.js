@@ -1,6 +1,8 @@
 (function () {
   "use strict";
 
+  var SAVE_KEY = "LMTL_SAVE_V1";
+
   var STAGES = [
     {
       id: "origin",
@@ -52,6 +54,20 @@
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
   ];
 
+  var THEMES = [
+    { id: "deep", name: "深空" },
+    { id: "abyss", name: "深渊" },
+    { id: "ember", name: "余烬" },
+    { id: "mono", name: "灰阶" }
+  ];
+
+  var SPEEDS = [
+    { value: 0.5, name: "0.5×" },
+    { value: 1, name: "1×" },
+    { value: 1.5, name: "1.5×" },
+    { value: 2, name: "2×" }
+  ];
+
   var OPENING_STORY = [
     { speaker: "旁白", text: "混沌初开" },
     { speaker: "旁白", text: "Derterition从昏迷中苏醒" },
@@ -65,6 +81,7 @@
   ];
 
   var unlockedStages = new Set(["origin"]);
+  var settings = { theme: "deep", newsSpeed: 1 };
 
   var sidebarEl = document.getElementById("sidebar");
   var resourcesEl = document.getElementById("resource-bar");
@@ -73,6 +90,13 @@
   var newsTextEl = document.getElementById("news-text");
   var newsTimeEl = document.getElementById("news-time");
   var stageCardEl = document.getElementById("stage-card");
+  var settingsPanelEl = document.getElementById("settings-panel");
+  var themeOptionsEl = document.getElementById("theme-options");
+  var speedOptionsEl = document.getElementById("speed-options");
+  var exportSaveEl = document.getElementById("export-save");
+  var importSaveEl = document.getElementById("import-save");
+  var importFileEl = document.getElementById("import-file");
+  var saveHintEl = document.getElementById("save-hint");
   var storyPanelEl = document.getElementById("story-panel");
   var storySkipEl = document.getElementById("story-skip");
   var storyPortraitEl = document.getElementById("story-portrait");
@@ -82,6 +106,7 @@
   var storyNextEl = document.getElementById("story-next");
 
   var activeStageId = "origin";
+  var currentView = "stage";
   var newsQueue = [];
   var newsAnim = null;
   var newsTimeout = null;
@@ -90,6 +115,7 @@
   var storyIndex = 0;
   var storyActive = false;
   var storyDone = null;
+  var hintTimeout = null;
 
   function isUnlocked(id) {
     return unlockedStages.has(id);
@@ -110,8 +136,7 @@
     group.className = "nav-item nav-top";
     group.textContent = "阶段";
     group.addEventListener("click", function () {
-      var first = firstUnlockedId();
-      if (first) setActiveStage(first);
+      setActiveStage(firstUnlockedId());
     });
     sidebarEl.appendChild(group);
     sidebarEl.appendChild(document.createElement("div")).className = "nav-sep";
@@ -120,13 +145,21 @@
       if (!isUnlocked(stage.id)) return;
       var link = document.createElement("a");
       link.href = "javascript:void(0)";
-      link.className = "nav-item nav-sub" + (stage.id === activeStageId ? " active" : "");
+      link.className = "nav-item nav-sub" + (currentView === "stage" && stage.id === activeStageId ? " active" : "");
       link.textContent = stage.tab;
       link.addEventListener("click", function () {
         setActiveStage(stage.id);
       });
       sidebarEl.appendChild(link);
     });
+
+    sidebarEl.appendChild(document.createElement("div")).className = "nav-sep";
+    var settingsLink = document.createElement("a");
+    settingsLink.href = "javascript:void(0)";
+    settingsLink.className = "nav-item" + (currentView === "settings" ? " active" : "");
+    settingsLink.textContent = "设置";
+    settingsLink.addEventListener("click", openSettings);
+    sidebarEl.appendChild(settingsLink);
   }
 
   function renderResources(stage) {
@@ -149,6 +182,11 @@
     descEl.textContent = stage.chapter + " · " + stage.title;
   }
 
+  function updateMainVisibility() {
+    stageCardEl.hidden = currentView !== "stage";
+    settingsPanelEl.hidden = currentView !== "settings";
+  }
+
   function setActiveStage(id) {
     if (!isUnlocked(id)) return;
     var stage = STAGES.find(function (item) {
@@ -157,9 +195,150 @@
     if (!stage) return;
 
     activeStageId = id;
+    currentView = "stage";
     renderSidebar();
     renderResources(stage);
     renderStage(stage);
+    updateMainVisibility();
+  }
+
+  function openSettings() {
+    currentView = "settings";
+    renderSidebar();
+    updateMainVisibility();
+  }
+
+  function renderSettings() {
+    themeOptionsEl.innerHTML = "";
+    THEMES.forEach(function (theme) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "setting-option" + (settings.theme === theme.id ? " active" : "");
+      button.textContent = theme.name;
+      button.addEventListener("click", function () {
+        settings.theme = theme.id;
+        applyTheme();
+        saveState();
+        renderSettings();
+      });
+      themeOptionsEl.appendChild(button);
+    });
+
+    speedOptionsEl.innerHTML = "";
+    SPEEDS.forEach(function (speed) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "setting-option" + (settings.newsSpeed === speed.value ? " active" : "");
+      button.textContent = speed.name;
+      button.addEventListener("click", function () {
+        settings.newsSpeed = speed.value;
+        saveState();
+        renderSettings();
+        refreshNewsQueue();
+      });
+      speedOptionsEl.appendChild(button);
+    });
+  }
+
+  function applyTheme() {
+    document.body.setAttribute("data-theme", settings.theme);
+  }
+
+  function showHint(message) {
+    saveHintEl.textContent = message;
+    window.clearTimeout(hintTimeout);
+    hintTimeout = window.setTimeout(function () {
+      saveHintEl.textContent = "";
+    }, 3000);
+  }
+
+  function buildSaveData() {
+    return {
+      version: 1,
+      unlockedStages: Array.from(unlockedStages),
+      activeStageId: activeStageId,
+      settings: { theme: settings.theme, newsSpeed: settings.newsSpeed }
+    };
+  }
+
+  function saveState() {
+    try {
+      window.localStorage.setItem(SAVE_KEY, JSON.stringify(buildSaveData()));
+    } catch (error) {
+      /* file:// 或隐私模式下存储不可用时静默跳过 */
+    }
+  }
+
+  function applySaveData(data) {
+    if (!data || typeof data !== "object") return false;
+    if (data.settings && THEMES.some(function (theme) {
+      return theme.id === data.settings.theme;
+    })) {
+      settings.theme = data.settings.theme;
+    }
+    if (data.settings && SPEEDS.some(function (speed) {
+      return speed.value === data.settings.newsSpeed;
+    })) {
+      settings.newsSpeed = data.settings.newsSpeed;
+    }
+    if (Array.isArray(data.unlockedStages)) {
+      data.unlockedStages.forEach(function (id) {
+        if (STAGES.some(function (stage) { return stage.id === id; })) {
+          unlockedStages.add(id);
+        }
+      });
+    }
+    if (isUnlocked(data.activeStageId)) {
+      activeStageId = data.activeStageId;
+    }
+    return true;
+  }
+
+  function loadState() {
+    try {
+      var raw = window.localStorage.getItem(SAVE_KEY);
+      if (raw) applySaveData(JSON.parse(raw));
+    } catch (error) {
+      /* 存档损坏时忽略，使用默认设置 */
+    }
+    applyTheme();
+  }
+
+  function exportSave() {
+    var text = JSON.stringify(buildSaveData(), null, 2);
+    var blob = new Blob([text], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement("a");
+    link.href = url;
+    link.download = "LMTL-save.json";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.setTimeout(function () {
+      URL.revokeObjectURL(url);
+    }, 1000);
+    showHint("存档已导出为 LMTL-save.json");
+  }
+
+  function importSave(text) {
+    try {
+      var data = JSON.parse(text);
+      if (!applySaveData(data)) throw new Error("invalid save");
+      applyTheme();
+      saveState();
+      renderSidebar();
+      renderSettings();
+      renderResources(STAGES.find(function (stage) {
+        return stage.id === activeStageId;
+      }) || STAGES[0]);
+      renderStage(STAGES.find(function (stage) {
+        return stage.id === activeStageId;
+      }) || STAGES[0]);
+      refreshNewsQueue();
+      showHint("存档已导入");
+    } catch (error) {
+      showHint("导入失败：文件格式不正确");
+    }
   }
 
   function renderStoryLine() {
@@ -176,7 +355,7 @@
     if (!storyActive) return;
     storyActive = false;
     storyPanelEl.hidden = true;
-    stageCardEl.hidden = false;
+    updateMainVisibility();
     var done = storyDone;
     storyDone = null;
     storyLines = null;
@@ -200,6 +379,7 @@
     storyDone = done || null;
     storyActive = true;
     stageCardEl.hidden = true;
+    settingsPanelEl.hidden = true;
     storyPanelEl.hidden = false;
     renderStoryLine();
     storyNextEl.focus();
@@ -239,7 +419,7 @@
           { transform: "translateX(" + -textWidth + "px)" }
         ],
         {
-          duration: Math.max(6000, (wrapWidth + textWidth) * 18),
+          duration: Math.max(6000, (wrapWidth + textWidth) * 18) / settings.newsSpeed,
           iterations: 1,
           easing: "linear"
         }
@@ -266,6 +446,7 @@
 
     unlockedStages.add(id);
     renderSidebar();
+    saveState();
     refreshNewsQueue();
     return true;
   }
@@ -289,6 +470,21 @@
     }
   });
 
+  exportSaveEl.addEventListener("click", exportSave);
+  importSaveEl.addEventListener("click", function () {
+    importFileEl.click();
+  });
+  importFileEl.addEventListener("change", function () {
+    var file = importFileEl.files && importFileEl.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      importSave(String(reader.result));
+    };
+    reader.readAsText(file);
+    importFileEl.value = "";
+  });
+
   window.LMTL = {
     unlockStage: unlockStage,
     getUnlockedStages: function () {
@@ -297,9 +493,15 @@
     playStory: startStory,
     replayOpening: function () {
       startStory(OPENING_STORY);
-    }
+    },
+    openSettings: openSettings,
+    exportSave: exportSave,
+    importSave: importSave
   };
 
+  loadState();
+  renderSidebar();
+  renderSettings();
   setActiveStage(activeStageId);
   refreshNewsQueue();
   updateClock();

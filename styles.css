@@ -5,6 +5,7 @@
   --c-l2: #ff00ff;
   --c-l3: #6aa6ff;
   --bg: #080c10;
+  --panel: #0c1117;
   --bg2: #101820;
   --bg3: #182430;
   --line: #203040;
@@ -14,7 +15,33 @@
   --cyan: #58d4c9;
   --purple: #b18cff;
   --red: #ff7a7a;
+  --news-bg: #000000;
+  --panel-border: #3a3f47;
+  --btn-bg: #2b2e34;
+  --story-bg: radial-gradient(ellipse at center, #161a20 0%, #05070a 100%);
   font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+/* 颜色主题 */
+body[data-theme="abyss"] {
+  --bg: #050a14; --panel: #0a1220; --bg2: #101c30; --bg3: #182c48;
+  --line: #20345a; --text: #d8e6ff; --dim: #8b9ec0; --gold: #6fa8ff;
+  --news-bg: #000208; --panel-border: #3a5078; --btn-bg: #253450;
+  --story-bg: radial-gradient(ellipse at center, #101a30 0%, #03060e 100%);
+}
+
+body[data-theme="ember"] {
+  --bg: #100808; --panel: #1a0e0e; --bg2: #281414; --bg3: #381e1e;
+  --line: #522626; --text: #f0dcdc; --dim: #b08b8b; --gold: #ff8a6f;
+  --news-bg: #080000; --panel-border: #6a3838; --btn-bg: #3a2222;
+  --story-bg: radial-gradient(ellipse at center, #2a1414 0%, #0e0404 100%);
+}
+
+body[data-theme="mono"] {
+  --bg: #0b0b0b; --panel: #131313; --bg2: #1c1c1c; --bg3: #282828;
+  --line: #383838; --text: #e0e0e0; --dim: #9a9a9a; --gold: #d0d0d0;
+  --news-bg: #000000; --panel-border: #4a4a4a; --btn-bg: #2b2b2b;
+  --story-bg: radial-gradient(ellipse at center, #1c1c1c 0%, #050505 100%);
 }
 
 * {
@@ -79,7 +106,7 @@ body {
   position: relative;
   flex: 1;
   overflow: hidden;
-  background: #000;
+  background: var(--news-bg);
 }
 
 .news-wrap {
@@ -120,7 +147,7 @@ body {
   width: var(--side-w);
   flex: 0 0 var(--side-w);
   border-right: 1px solid var(--line);
-  background: #0c1117;
+  background: var(--panel);
   padding: 6px 0;
   overflow-y: auto;
 }
@@ -215,7 +242,7 @@ body {
   background: var(--bg3);
 }
 
-/* 主要内容：浅色渐变背景 + 居中卡片 */
+/* 主要内容：深色背景 + 居中内容 */
 .main {
   flex: 1;
   min-height: 0;
@@ -224,7 +251,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #0c1117;
+  background: var(--panel);
 }
 
 .stage-card {
@@ -239,7 +266,7 @@ body {
 
 .stage-title {
   margin: 0;
-  color: #fff;
+  color: var(--text);
   font-size: 22px;
   font-weight: 600;
   letter-spacing: 0.12em;
@@ -253,6 +280,77 @@ body {
   font-size: 13px;
   line-height: 1.6;
   text-align: center;
+}
+
+/* 设置面板 */
+.settings-panel {
+  width: min(760px, 100%);
+  margin: auto;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.settings-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 22px;
+  letter-spacing: 0.1em;
+  text-align: center;
+}
+
+.settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.setting-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.setting-label {
+  color: var(--gold);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.setting-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.setting-btn,
+.setting-option {
+  padding: 7px 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 2px;
+  background: var(--btn-bg);
+  color: var(--text);
+  font: 13px "Microsoft YaHei", sans-serif;
+  cursor: pointer;
+}
+
+.setting-btn:hover,
+.setting-option:hover {
+  border-color: var(--cyan);
+}
+
+.setting-option.active {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: var(--bg3);
+}
+
+.setting-hint {
+  margin: 0;
+  color: var(--dim);
+  font-size: 12px;
+  min-height: 16px;
 }
 
 /* 剧情：全屏覆盖层 */
@@ -270,7 +368,7 @@ body {
   justify-content: center;
   gap: 36px;
   padding: 60px;
-  background: radial-gradient(ellipse at center, #161a20 0%, #05070a 100%);
+  background: var(--story-bg);
 }
 
 .story-skip {
@@ -305,8 +403,8 @@ body {
 .story-portrait {
   width: 220px;
   flex: 0 0 220px;
-  border: 1px solid #3a3f47;
-  background: #15171b;
+  border: 1px solid var(--panel-border);
+  background: var(--bg2);
   overflow: hidden;
 }
 
@@ -321,7 +419,7 @@ body {
   min-width: 0;
   min-height: 200px;
   padding: 28px 32px;
-  border: 1px solid #3a3f47;
+  border: 1px solid var(--panel-border);
   border-radius: 4px;
   background: rgba(0, 0, 0, 0.55);
   display: flex;
@@ -338,7 +436,7 @@ body {
 
 .story-line {
   margin: 0;
-  color: #fff;
+  color: var(--text);
   font-size: 22px;
   line-height: 1.7;
 }
@@ -365,7 +463,7 @@ body {
   border: 1px solid #4a5058;
   border-radius: 2px;
   background: rgba(0, 0, 0, 0.4);
-  color: #fff;
+  color: var(--text);
   font: 14px "Microsoft YaHei", sans-serif;
   cursor: pointer;
 }
@@ -408,6 +506,11 @@ body {
 
   .res-amount {
     font-size: 16px;
+  }
+
+  .settings-panel {
+    padding: 20px 16px;
+    gap: 18px;
   }
 
   .story-panel {
