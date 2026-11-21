@@ -224,22 +224,17 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(90deg, #0b0d10 0%, #d8dce2 16%, #f2f4f7 50%, #d8dce2 84%, #0b0d10 100%);
+  background: #0c1117;
 }
 
 .stage-card {
   width: min(440px, 100%);
-  min-height: 420px;
   padding: 24px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 14px;
-  border: 1px solid #3a3f47;
-  border-radius: 4px;
-  background: linear-gradient(180deg, #272a30 0%, #15171b 100%);
-  box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.45), 0 24px 60px rgba(0, 0, 0, 0.55);
 }
 
 .stage-title {
