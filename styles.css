@@ -270,7 +270,6 @@ body {
   gap: 36px;
   padding: 60px;
   background: radial-gradient(ellipse at center, #161a20 0%, #05070a 100%);
-  cursor: pointer;
 }
 
 .story-skip {

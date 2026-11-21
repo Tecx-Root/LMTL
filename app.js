@@ -282,17 +282,9 @@
     event.stopPropagation();
     endStory();
   });
-  storyNextEl.addEventListener("click", function (event) {
-    event.stopPropagation();
-    advanceStory();
-  });
-  storyPanelEl.addEventListener("click", advanceStory);
+  storyNextEl.addEventListener("click", advanceStory);
   document.addEventListener("keydown", function (event) {
-    if (!storyActive) return;
-    if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
-      event.preventDefault();
-      advanceStory();
-    } else if (event.key === "Escape") {
+    if (storyActive && event.key === "Escape") {
       endStory();
     }
   });
