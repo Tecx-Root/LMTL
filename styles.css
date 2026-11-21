@@ -353,6 +353,62 @@ body {
   min-height: 16px;
 }
 
+/* 统计面板 */
+.stats-panel {
+  width: min(760px, 100%);
+  margin: auto;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.stats-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 22px;
+  letter-spacing: 0.1em;
+  text-align: center;
+}
+
+.stats-view {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.stats-group {
+  padding: 14px 18px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg2);
+}
+
+.stats-group-title {
+  margin: 0 0 8px;
+  color: var(--gold);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 5px 0;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+}
+
+.stat-key {
+  color: var(--dim);
+}
+
+.stat-val {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
 /* 剧情：全屏覆盖层 */
 [hidden] {
   display: none !important;
@@ -511,6 +567,14 @@ body {
   .settings-panel {
     padding: 20px 16px;
     gap: 18px;
+  }
+
+  .stats-panel {
+    padding: 20px 16px;
+  }
+
+  .stats-view {
+    grid-template-columns: 1fr;
   }
 
   .story-panel {
