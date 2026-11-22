@@ -98,8 +98,17 @@
     { id: "anchor", name: "奇点锚", desc: "全局收益 +50%",  cost: 300000 }
   ];
 
-  function purchaseNumber(index) {
-    return String(index + 1).padStart(2, "0");
+  // B = 可重复购买的升级，U = 仅可购买一次的项目
+  function itemCode(prefix, index) {
+    return prefix + "A0-" + (index + 1);
+  }
+
+  function upgradeCode(index) {
+    return itemCode("B", index);
+  }
+
+  function purchaseCode(index) {
+    return itemCode("U", index);
   }
 
   // 密钥按键位偏移编码，源码中不保存明文
@@ -326,7 +335,7 @@
 
   function renderUpgrades() {
     upgradeGridEl.innerHTML = "";
-    UPGRADES.forEach(function (definition) {
+    UPGRADES.forEach(function (definition, index) {
       var level = numeric.levels[definition.id];
       var cost = upgradeCost(definition);
       var affordable = numeric.value.gte(cost);
@@ -336,7 +345,7 @@
       card.dataset.upgradeId = definition.id;
       card.disabled = !affordable;
       card.innerHTML =
-        '<span class="upgrade-name">' + definition.name + "</span>" +
+        '<span class="upgrade-name"><span class="item-code">' + upgradeCode(index) + "</span> · " + definition.name + "</span>" +
         '<span class="upgrade-level">Lv.' + level + "</span>" +
         '<span class="upgrade-desc">' + definition.desc + "</span>" +
         '<span class="upgrade-cost">' + formatNumber(cost) + " 数值</span>";
@@ -360,7 +369,7 @@
       card.dataset.purchaseId = definition.id;
       card.disabled = owned || !affordable;
       card.innerHTML =
-        '<span class="upgrade-name">' + purchaseNumber(index) + " · " + definition.name + "</span>" +
+        '<span class="upgrade-name"><span class="item-code">' + purchaseCode(index) + "</span> · " + definition.name + "</span>" +
         '<span class="upgrade-level' + (owned ? " purchase-owned" : "") + '">' + (owned ? "已购买" : "未购买") + "</span>" +
         '<span class="upgrade-desc">' + definition.desc + "</span>" +
         '<span class="upgrade-cost">' + (owned ? "已获得" : formatNumber(cost) + " 数值") + "</span>";
@@ -692,15 +701,15 @@
     html += "</div>";
 
     html += '<div class="stats-group"><h3 class="stats-group-title">升级</h3>';
-    UPGRADES.forEach(function (definition) {
-      html += statRow(definition.name + " Lv." + numeric.levels[definition.id], formatNumber(upgradeCost(definition)) + " 下次");
+    UPGRADES.forEach(function (definition, index) {
+      html += statRow(upgradeCode(index) + " · " + definition.name + " Lv." + numeric.levels[definition.id], formatNumber(upgradeCost(definition)) + " 下次");
     });
     html += statRow("购买总数", stats.totalPurchases + " 次");
     html += "</div>";
 
     html += '<div class="stats-group"><h3 class="stats-group-title">购买项</h3>';
     PURCHASES.forEach(function (definition, index) {
-      html += statRow(purchaseNumber(index) + " · " + definition.name, hasPurchase(definition.id) ? "已购买" : formatNumber(BN.from(definition.cost)) + " 数值");
+      html += statRow(purchaseCode(index) + " · " + definition.name, hasPurchase(definition.id) ? "已购买" : formatNumber(BN.from(definition.cost)) + " 数值");
     });
     html += statRow("已拥有", numeric.purchased.size + " / " + PURCHASES.length);
     html += "</div>";

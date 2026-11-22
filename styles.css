@@ -390,6 +390,12 @@ body {
   font-weight: 700;
 }
 
+.item-code {
+  font: 700 12px Consolas, "Courier New", monospace;
+  color: var(--gold);
+  letter-spacing: 0.02em;
+}
+
 .upgrade-level {
   font: 13px Consolas, "Courier New", monospace;
   color: var(--dim);
