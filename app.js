@@ -1,6 +1,7 @@
 (function () {
   "use strict";
 
+  var BN = window.LMTLBigNumber;
   var SAVE_KEY = "LMTL_SAVE_V1";
   var CIPHER_PREFIX = "LMTL1:";
   var CIPHER_KEY = "LMTL-sec-2026!";
@@ -9,7 +10,7 @@
     {
       id: "origin",
       chapter: "第1章",
-      tab: "源初",
+      tab: "数值",
       title: "源初（万物之始）",
       desc: "万物之始。混沌尚未散去，数值是最初的锚点。",
       resources: ["数值"]
@@ -121,9 +122,13 @@
     saveLoads: 0,
     totalClicks: 0,
     totalPurchases: 0,
-    peakValue: 0
+    peakValue: BN.from(0)
   };
-  var numeric = { value: 0, total: 0, levels: { tap: 0, auto: 0, tapm: 0, autom: 0 } };
+  var numeric = {
+    value: BN.from(0),
+    total: BN.from(0),
+    levels: { tap: 0, auto: 0, tapm: 0, autom: 0 }
+  };
   var valueEls = {};
 
   var sidebarEl = document.getElementById("sidebar");
@@ -196,7 +201,7 @@
   function renderSidebar() {
     sidebarEl.innerHTML = "";
 
-    var stageGroup = addNavItem("nav-top", "阶段", function () {
+    var stageGroup = addNavItem("nav-top", "源初", function () {
       setActiveStage(firstUnlockedId());
     });
     stageGroup.classList.toggle("nav-active-group", currentView === "stage");
@@ -243,38 +248,43 @@
   }
 
   function formatNumber(value) {
-    if (!isFinite(value)) return "∞";
-    if (value < 1000) {
-      if (value < 10) return (Math.round(value * 10) / 10).toString();
-      return Math.floor(value).toString();
+    var n = BN.from(value);
+    if (!n.isFinite()) return n.m > 0 ? "∞" : "-∞";
+    if (n.isZero()) return "0";
+    if (n.e >= 18) return n.toScientific(2);
+    var v = n.toNumber();
+    if (v < 1000) {
+      if (v < 10) return (Math.round(v * 10) / 10).toString();
+      return Math.floor(v).toString();
     }
-    var units = ["K", "M", "B", "T", "Qa", "Qi"];
+    var units = ["K", "M", "B", "T", "Qa"];
     var tier = -1;
-    var n = value;
-    while (n >= 1000 && tier < units.length - 1) {
-      n /= 1000;
+    while (v >= 1000 && tier < units.length - 1) {
+      v /= 1000;
       tier += 1;
     }
-    var digits = n < 10 ? 2 : n < 100 ? 1 : 0;
-    return n.toFixed(digits) + units[tier];
+    var digits = v < 10 ? 2 : v < 100 ? 1 : 0;
+    return v.toFixed(digits) + units[tier];
   }
 
   function upgradeCost(definition) {
-    return Math.ceil(definition.base * Math.pow(definition.coeff, numeric.levels[definition.id]));
+    var level = numeric.levels[definition.id];
+    return BN.from(definition.base).mul(BN.from(definition.coeff).powInt(level)).ceil();
   }
 
   function clickGain() {
-    return (1 + numeric.levels.tap) * (1 + 0.5 * numeric.levels.tapm);
+    return BN.from(1 + numeric.levels.tap).mul(BN.from(1 + 0.5 * numeric.levels.tapm));
   }
 
   function autoRate() {
-    return numeric.levels.auto * (1 + 0.5 * numeric.levels.autom);
+    return BN.from(numeric.levels.auto).mul(BN.from(1 + 0.5 * numeric.levels.autom));
   }
 
   function gainValue(amount) {
-    numeric.value += amount;
-    numeric.total += amount;
-    if (numeric.value > stats.peakValue) stats.peakValue = numeric.value;
+    var delta = BN.from(amount);
+    numeric.value = numeric.value.add(delta);
+    numeric.total = numeric.total.add(delta);
+    if (numeric.value.gt(stats.peakValue)) stats.peakValue = numeric.value;
     updateValueUI();
   }
 
@@ -296,7 +306,7 @@
     UPGRADES.forEach(function (definition) {
       var level = numeric.levels[definition.id];
       var cost = upgradeCost(definition);
-      var affordable = numeric.value >= cost;
+      var affordable = numeric.value.gte(cost);
       var card = document.createElement("button");
       card.type = "button";
       card.className = "upgrade-card" + (affordable ? " affordable" : "");
@@ -320,7 +330,7 @@
       var card = valueEls[definition.id];
       if (!card) return;
       var cost = upgradeCost(definition);
-      var affordable = numeric.value >= cost;
+      var affordable = numeric.value.gte(cost);
       if (card.classList.contains("affordable") !== affordable) {
         card.classList.toggle("affordable", affordable);
         card.disabled = !affordable;
@@ -332,8 +342,8 @@
     var definition = UPGRADES.find(function (item) { return item.id === id; });
     if (!definition) return false;
     var cost = upgradeCost(definition);
-    if (numeric.value < cost) return false;
-    numeric.value -= cost;
+    if (numeric.value.lt(cost)) return false;
+    numeric.value = numeric.value.sub(cost);
     numeric.levels[id] += 1;
     stats.totalPurchases += 1;
     renderUpgrades();
@@ -370,7 +380,7 @@
     var dt = Math.max(0, Math.min((now - lastTick) / 1000, 1));
     lastTick = now;
     var rate = autoRate();
-    if (rate > 0 && dt > 0) gainValue(rate * dt);
+    if (rate.gt(0) && dt > 0) gainValue(rate.mul(dt));
     refreshUpgradeAffordability();
   }
 
@@ -565,13 +575,13 @@
 
   function buildSaveData() {
     return {
-      version: 3,
+      version: 4,
       unlockedStages: Array.from(unlockedStages),
       activeStageId: activeStageId,
       settings: { theme: settings.theme, newsSpeed: settings.newsSpeed },
       numeric: {
-        value: numeric.value,
-        total: numeric.total,
+        value: numeric.value.toScientific(),
+        total: numeric.total.toScientific(),
         levels: {
           tap: numeric.levels.tap,
           auto: numeric.levels.auto,
@@ -590,7 +600,7 @@
         saveLoads: stats.saveLoads,
         totalClicks: stats.totalClicks,
         totalPurchases: stats.totalPurchases,
-        peakValue: stats.peakValue
+        peakValue: stats.peakValue.toScientific()
       }
     };
   }
@@ -627,6 +637,7 @@
     }
     if (data.stats && typeof data.stats === "object") {
       Object.keys(stats).forEach(function (key) {
+        if (key === "peakValue") return;
         var value = data.stats[key];
         if (typeof value === "number" && isFinite(value) && value >= 0) {
           stats[key] = Math.floor(value);
@@ -634,14 +645,10 @@
       });
     }
     if (data.numeric && typeof data.numeric === "object") {
-      var savedValue = data.numeric.value;
-      var savedTotal = data.numeric.total;
-      if (typeof savedValue === "number" && isFinite(savedValue) && savedValue >= 0) {
-        numeric.value = savedValue;
-      }
-      if (typeof savedTotal === "number" && isFinite(savedTotal) && savedTotal >= savedValue) {
-        numeric.total = savedTotal;
-      }
+      var savedValue = BN.from(data.numeric.value);
+      var savedTotal = BN.from(data.numeric.total);
+      if (savedValue.isFinite() && savedValue.gte(0)) numeric.value = savedValue;
+      if (savedTotal.isFinite() && savedTotal.gte(numeric.value)) numeric.total = savedTotal;
       if (data.numeric.levels && typeof data.numeric.levels === "object") {
         UPGRADES.forEach(function (definition) {
           var level = data.numeric.levels[definition.id];
@@ -651,6 +658,11 @@
         });
       }
     }
+    if (data.stats && data.stats.peakValue != null) {
+      var savedPeak = BN.from(data.stats.peakValue);
+      stats.peakValue = savedPeak.isFinite() && savedPeak.gte(0) ? savedPeak : BN.from(0);
+    }
+    if (stats.peakValue.lt(numeric.value)) stats.peakValue = numeric.value;
     return true;
   }
 
@@ -887,8 +899,9 @@
     exportSave: exportSave,
     importSave: importSave,
     grantValue: function (amount) {
-      if (typeof amount === "number" && isFinite(amount) && amount > 0) {
-        gainValue(amount);
+      var delta = BN.from(amount);
+      if (delta.isFinite() && delta.gt(0)) {
+        gainValue(delta);
         refreshUpgradeAffordability();
         saveState();
       }
@@ -896,12 +909,19 @@
     buyUpgrade: buyUpgrade,
     getNumeric: function () {
       return {
-        value: numeric.value,
-        total: numeric.total,
+        value: numeric.value.toNumber(),
+        valueText: numeric.value.toScientific(),
+        total: numeric.total.toNumber(),
+        totalText: numeric.total.toScientific(),
         levels: Object.assign({}, numeric.levels),
-        clickGain: clickGain(),
-        autoRate: autoRate()
+        clickGain: clickGain().toNumber(),
+        clickGainText: clickGain().toScientific(),
+        autoRate: autoRate().toNumber(),
+        autoRateText: autoRate().toScientific()
       };
+    },
+    formatBigNumber: function (text) {
+      return formatNumber(BN.from(text));
     }
   };
 
@@ -914,7 +934,7 @@
   refreshNewsQueue();
   updateClock();
   window.setInterval(updateClock, 30000);
-  statsInterval = window.setInterval(tickStats, 1000);
+  window.setInterval(tickStats, 1000);
   window.setInterval(gameTick, 100);
   window.setInterval(saveState, 30000);
   startStory(OPENING_STORY);
