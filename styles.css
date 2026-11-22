@@ -255,13 +255,14 @@ body {
 }
 
 .stage-card {
-  width: min(440px, 100%);
+  width: min(760px, 100%);
+  margin: auto;
   padding: 24px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: 18px;
 }
 
 .stage-title {
@@ -280,6 +281,131 @@ body {
   font-size: 13px;
   line-height: 1.6;
   text-align: center;
+}
+
+/* 数值核心 */
+.value-core-wrap {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.value-core {
+  position: relative;
+  width: 190px;
+  height: 190px;
+  border-radius: 50%;
+  border: 2px solid var(--gold);
+  background: radial-gradient(circle at 50% 40%, var(--bg3), var(--bg2) 70%);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  overflow: visible;
+  transition: border-color 0.15s, transform 0.08s;
+}
+
+.value-core:hover {
+  border-color: var(--cyan);
+}
+
+.value-core:active {
+  transform: scale(0.97);
+}
+
+.value-core-label {
+  font-size: 13px;
+  color: var(--dim);
+  letter-spacing: 0.12em;
+}
+
+.value-amount {
+  font: 700 34px/1 Consolas, "Courier New", monospace;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.value-rate {
+  font: 13px Consolas, "Courier New", monospace;
+  color: var(--cyan);
+}
+
+.per-click {
+  color: var(--dim);
+  font: 13px Consolas, "Courier New", monospace;
+}
+
+.value-float {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  color: var(--gold);
+  font: 700 18px Consolas, "Courier New", monospace;
+  text-shadow: 0 0 8px rgba(0, 0, 0, 0.8);
+}
+
+/* 升级网格 */
+.upgrade-grid {
+  width: min(680px, 100%);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.upgrade-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 2px;
+  background: var(--bg2);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.upgrade-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.upgrade-card.affordable {
+  border-color: var(--gold);
+}
+
+.upgrade-card.affordable:hover {
+  background: var(--bg3);
+}
+
+.upgrade-name {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.upgrade-level {
+  font: 13px Consolas, "Courier New", monospace;
+  color: var(--dim);
+  text-align: right;
+}
+
+.upgrade-desc {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.upgrade-cost {
+  grid-column: 1 / -1;
+  font: 13px Consolas, "Courier New", monospace;
+  color: var(--gold);
 }
 
 /* 设置面板 */
@@ -562,6 +688,19 @@ body {
 
   .res-amount {
     font-size: 16px;
+  }
+
+  .value-core {
+    width: 150px;
+    height: 150px;
+  }
+
+  .value-amount {
+    font-size: 26px;
+  }
+
+  .upgrade-grid {
+    grid-template-columns: 1fr;
   }
 
   .settings-panel {

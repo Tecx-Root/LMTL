@@ -70,6 +70,32 @@
     { value: 2, name: "2×" }
   ];
 
+  /*
+   * 源初数值系统（数值平衡依据，2026-11-21 模拟验证）
+   * ---------------------------------------------------------------
+   * 成本公式：cost(level) = ceil(base × coeff^level)
+   * 收益公式：点击 = (1+凝聚级) × (1+0.5×聚能级)
+   *           自动 = 涌流级 × (1+0.5×共鸣级)
+   * 倍率采用线性叠加(1+0.5lv)而非 ×2 连乘，避免数值指数爆炸。
+   *
+   * 升级         base  coeff   首级成本   前10级成本
+   * 凝聚(点击+1)  15    1.35      15       15 21 28 37 50 68 91 123 166 224
+   * 涌流(自动+1) 100    1.50     100       100 150 225 338 507 760 1140 1709 2563 3845
+   * 聚能(点击×1.5)200   2.20     200       200 441 969 2130 4686 ...
+   * 共鸣(自动×1.5)500   2.20     500       500 1100 2421 5325 11713 ...
+   *
+   * 模拟(自动购买回本最短项, 5次/秒点击)：
+   *   累计 1万 ≈ 1.5分钟，10万 ≈ 5.5分钟，30分钟 ≈ 124万。
+   *   相邻数量级间隔 7.5s / 21.5s / 60s / 243s，逐级放缓但不出现硬墙。
+   *   纯点击不升级：1万需 2000秒 —— 升级收益明确，但无升级也能缓慢推进。
+   */
+  var UPGRADES = [
+    { id: "tap",   name: "凝聚", desc: "每次点击 +1 数值",          base: 15,  coeff: 1.35 },
+    { id: "auto",  name: "涌流", desc: "每秒自动 +1 数值",          base: 100, coeff: 1.5 },
+    { id: "tapm",  name: "聚能", desc: "点击收益 +50%（线性叠加）", base: 200, coeff: 2.2 },
+    { id: "autom", name: "共鸣", desc: "自动产出 +50%（线性叠加）", base: 500, coeff: 2.2 }
+  ];
+
   var OPENING_STORY = [
     { speaker: "旁白", text: "混沌初开" },
     { speaker: "旁白", text: "Derterition从昏迷中苏醒" },
@@ -92,13 +118,23 @@
     storyFinished: 0,
     saveExports: 0,
     saveImports: 0,
-    saveLoads: 0
+    saveLoads: 0,
+    totalClicks: 0,
+    totalPurchases: 0,
+    peakValue: 0
   };
+  var numeric = { value: 0, total: 0, levels: { tap: 0, auto: 0, tapm: 0, autom: 0 } };
+  var valueEls = {};
 
   var sidebarEl = document.getElementById("sidebar");
   var resourcesEl = document.getElementById("resource-bar");
   var titleEl = document.getElementById("stage-title");
   var descEl = document.getElementById("stage-desc");
+  var valueCoreWrapEl = document.getElementById("value-core-wrap");
+  var valueAmountEl = document.getElementById("value-amount");
+  var valueRateEl = document.getElementById("value-rate");
+  var perClickEl = document.getElementById("per-click");
+  var upgradeGridEl = document.getElementById("upgrade-grid");
   var newsTextEl = document.getElementById("news-text");
   var newsTimeEl = document.getElementById("news-time");
   var stageCardEl = document.getElementById("stage-card");
@@ -190,6 +226,7 @@
       var meta = RESOURCE_META[name];
       var cell = document.createElement("div");
       cell.className = "res-cell " + meta.cls;
+      cell.dataset.resKey = name;
       cell.innerHTML =
         '<div class="res-name">' + name + "</div>" +
         '<div class="res-amount">0</div>' +
@@ -202,6 +239,139 @@
   function renderStage(stage) {
     titleEl.textContent = stage.tab;
     descEl.textContent = stage.chapter + " · " + stage.title;
+    valueCoreWrapEl.hidden = stage.id !== "origin";
+  }
+
+  function formatNumber(value) {
+    if (!isFinite(value)) return "∞";
+    if (value < 1000) {
+      if (value < 10) return (Math.round(value * 10) / 10).toString();
+      return Math.floor(value).toString();
+    }
+    var units = ["K", "M", "B", "T", "Qa", "Qi"];
+    var tier = -1;
+    var n = value;
+    while (n >= 1000 && tier < units.length - 1) {
+      n /= 1000;
+      tier += 1;
+    }
+    var digits = n < 10 ? 2 : n < 100 ? 1 : 0;
+    return n.toFixed(digits) + units[tier];
+  }
+
+  function upgradeCost(definition) {
+    return Math.ceil(definition.base * Math.pow(definition.coeff, numeric.levels[definition.id]));
+  }
+
+  function clickGain() {
+    return (1 + numeric.levels.tap) * (1 + 0.5 * numeric.levels.tapm);
+  }
+
+  function autoRate() {
+    return numeric.levels.auto * (1 + 0.5 * numeric.levels.autom);
+  }
+
+  function gainValue(amount) {
+    numeric.value += amount;
+    numeric.total += amount;
+    if (numeric.value > stats.peakValue) stats.peakValue = numeric.value;
+    updateValueUI();
+  }
+
+  function updateValueUI() {
+    valueAmountEl.textContent = formatNumber(numeric.value);
+    valueRateEl.textContent = "+" + formatNumber(autoRate()) + "/秒";
+    perClickEl.textContent = "+" + formatNumber(clickGain()) + " / 点击";
+    var cell = resourcesEl.querySelector('[data-res-key="数值"]');
+    if (cell) {
+      cell.querySelector(".res-amount").textContent = formatNumber(numeric.value);
+      cell.querySelector(".res-total").textContent = "累计 " + formatNumber(numeric.total);
+      cell.querySelector(".res-rate").textContent = "+" + formatNumber(autoRate()) + "/秒";
+    }
+    if (currentView === "stats" && statsPanelEl.hidden === false) renderStats();
+  }
+
+  function renderUpgrades() {
+    upgradeGridEl.innerHTML = "";
+    UPGRADES.forEach(function (definition) {
+      var level = numeric.levels[definition.id];
+      var cost = upgradeCost(definition);
+      var affordable = numeric.value >= cost;
+      var card = document.createElement("button");
+      card.type = "button";
+      card.className = "upgrade-card" + (affordable ? " affordable" : "");
+      card.dataset.upgradeId = definition.id;
+      card.disabled = !affordable;
+      card.innerHTML =
+        '<span class="upgrade-name">' + definition.name + "</span>" +
+        '<span class="upgrade-level">Lv.' + level + "</span>" +
+        '<span class="upgrade-desc">' + definition.desc + "</span>" +
+        '<span class="upgrade-cost">' + formatNumber(cost) + " 数值</span>";
+      card.addEventListener("click", function () {
+        buyUpgrade(definition.id);
+      });
+      upgradeGridEl.appendChild(card);
+      valueEls[definition.id] = card;
+    });
+  }
+
+  function refreshUpgradeAffordability() {
+    UPGRADES.forEach(function (definition) {
+      var card = valueEls[definition.id];
+      if (!card) return;
+      var cost = upgradeCost(definition);
+      var affordable = numeric.value >= cost;
+      if (card.classList.contains("affordable") !== affordable) {
+        card.classList.toggle("affordable", affordable);
+        card.disabled = !affordable;
+      }
+    });
+  }
+
+  function buyUpgrade(id) {
+    var definition = UPGRADES.find(function (item) { return item.id === id; });
+    if (!definition) return false;
+    var cost = upgradeCost(definition);
+    if (numeric.value < cost) return false;
+    numeric.value -= cost;
+    numeric.levels[id] += 1;
+    stats.totalPurchases += 1;
+    renderUpgrades();
+    updateValueUI();
+    saveState();
+    return true;
+  }
+
+  function spawnFloat(text, event) {
+    var floatEl = document.createElement("span");
+    floatEl.className = "value-float";
+    floatEl.textContent = text;
+    var box = valueCoreWrapEl.getBoundingClientRect();
+    var x = event && event.clientX ? event.clientX - box.left : box.width / 2;
+    var y = event && event.clientY ? event.clientY - box.top : box.height / 2;
+    floatEl.style.left = x + "px";
+    floatEl.style.top = y + "px";
+    valueCoreWrapEl.appendChild(floatEl);
+    var animation = floatEl.animate(
+      [
+        { transform: "translate(-50%, 0)", opacity: 1 },
+        { transform: "translate(-50%, -60px)", opacity: 0 }
+      ],
+      { duration: 800, easing: "ease-out" }
+    );
+    animation.onfinish = function () {
+      if (floatEl.parentNode) floatEl.parentNode.removeChild(floatEl);
+    };
+  }
+
+  var lastTick = Date.now();
+  function gameTick() {
+    var now = Date.now();
+    var dt = Math.max(0, Math.min((now - lastTick) / 1000, 1));
+    lastTick = now;
+    var rate = autoRate();
+    if (rate > 0 && dt > 0) gainValue(rate * dt);
+    refreshUpgradeAffordability();
   }
 
   function updateMainVisibility() {
@@ -300,9 +470,25 @@
     html += statRow("当前章节", stage.chapter);
     html += "</div>";
 
+    html += '<div class="stats-group"><h3 class="stats-group-title">数值</h3>';
+    html += statRow("当前", formatNumber(numeric.value));
+    html += statRow("累计产出", formatNumber(numeric.total));
+    html += statRow("历史峰值", formatNumber(stats.peakValue));
+    html += statRow("点击收益", formatNumber(clickGain()) + " / 次");
+    html += statRow("自动产出", formatNumber(autoRate()) + " / 秒");
+    html += statRow("累计点击", stats.totalClicks + " 次");
+    html += "</div>";
+
+    html += '<div class="stats-group"><h3 class="stats-group-title">升级</h3>';
+    UPGRADES.forEach(function (definition) {
+      html += statRow(definition.name + " Lv." + numeric.levels[definition.id], formatNumber(upgradeCost(definition)) + " 下次");
+    });
+    html += statRow("购买总数", stats.totalPurchases + " 次");
+    html += "</div>";
+
     html += '<div class="stats-group"><h3 class="stats-group-title">资源</h3>';
     resourceNames.forEach(function (name) {
-      html += statRow(name, "0");
+      html += statRow(name, name === "数值" ? formatNumber(numeric.value) : "0");
     });
     html += "</div>";
 
@@ -379,10 +565,20 @@
 
   function buildSaveData() {
     return {
-      version: 2,
+      version: 3,
       unlockedStages: Array.from(unlockedStages),
       activeStageId: activeStageId,
       settings: { theme: settings.theme, newsSpeed: settings.newsSpeed },
+      numeric: {
+        value: numeric.value,
+        total: numeric.total,
+        levels: {
+          tap: numeric.levels.tap,
+          auto: numeric.levels.auto,
+          tapm: numeric.levels.tapm,
+          autom: numeric.levels.autom
+        }
+      },
       stats: {
         playSeconds: stats.playSeconds,
         newsPlayed: stats.newsPlayed,
@@ -391,7 +587,10 @@
         storyFinished: stats.storyFinished,
         saveExports: stats.saveExports,
         saveImports: stats.saveImports,
-        saveLoads: stats.saveLoads
+        saveLoads: stats.saveLoads,
+        totalClicks: stats.totalClicks,
+        totalPurchases: stats.totalPurchases,
+        peakValue: stats.peakValue
       }
     };
   }
@@ -433,6 +632,24 @@
           stats[key] = Math.floor(value);
         }
       });
+    }
+    if (data.numeric && typeof data.numeric === "object") {
+      var savedValue = data.numeric.value;
+      var savedTotal = data.numeric.total;
+      if (typeof savedValue === "number" && isFinite(savedValue) && savedValue >= 0) {
+        numeric.value = savedValue;
+      }
+      if (typeof savedTotal === "number" && isFinite(savedTotal) && savedTotal >= savedValue) {
+        numeric.total = savedTotal;
+      }
+      if (data.numeric.levels && typeof data.numeric.levels === "object") {
+        UPGRADES.forEach(function (definition) {
+          var level = data.numeric.levels[definition.id];
+          if (typeof level === "number" && isFinite(level) && level >= 0) {
+            numeric.levels[definition.id] = Math.floor(level);
+          }
+        });
+      }
     }
     return true;
   }
@@ -483,6 +700,8 @@
       renderStage(STAGES.find(function (stage) {
         return stage.id === activeStageId;
       }) || STAGES[0]);
+      renderUpgrades();
+      updateValueUI();
       refreshNewsQueue();
       showHint("加密存档已导入");
     } catch (error) {
@@ -630,6 +849,15 @@
     }
   });
 
+  valueCoreWrapEl.addEventListener("click", function (event) {
+    if (currentView !== "stage") return;
+    var gain = clickGain();
+    stats.totalClicks += 1;
+    gainValue(gain);
+    spawnFloat("+" + formatNumber(gain), event);
+    refreshUpgradeAffordability();
+  });
+
   exportSaveEl.addEventListener("click", exportSave);
   importSaveEl.addEventListener("click", function () {
     importFileEl.click();
@@ -657,17 +885,37 @@
     openSettings: openSettings,
     openStats: openStats,
     exportSave: exportSave,
-    importSave: importSave
+    importSave: importSave,
+    grantValue: function (amount) {
+      if (typeof amount === "number" && isFinite(amount) && amount > 0) {
+        gainValue(amount);
+        refreshUpgradeAffordability();
+        saveState();
+      }
+    },
+    buyUpgrade: buyUpgrade,
+    getNumeric: function () {
+      return {
+        value: numeric.value,
+        total: numeric.total,
+        levels: Object.assign({}, numeric.levels),
+        clickGain: clickGain(),
+        autoRate: autoRate()
+      };
+    }
   };
 
   loadState();
   renderSidebar();
   renderSettings();
   setActiveStage(activeStageId);
+  renderUpgrades();
+  updateValueUI();
   refreshNewsQueue();
   updateClock();
   window.setInterval(updateClock, 30000);
   statsInterval = window.setInterval(tickStats, 1000);
+  window.setInterval(gameTick, 100);
   window.setInterval(saveState, 30000);
   startStory(OPENING_STORY);
 })();
