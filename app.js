@@ -72,30 +72,40 @@
   ];
 
   /*
-   * 源初数值系统（数值平衡依据，2026-11-21 模拟验证）
-   * ---------------------------------------------------------------
-   * 成本公式：cost(level) = ceil(base × coeff^level)
-   * 收益公式：点击 = (1+凝聚级) × (1+0.5×聚能级)
-   *           自动 = 涌流级 × (1+0.5×共鸣级)
-   * 倍率采用线性叠加(1+0.5lv)而非 ×2 连乘，避免数值指数爆炸。
-   *
-   * 升级         base  coeff   首级成本   前10级成本
-   * 凝聚(点击+1)  15    1.35      15       15 21 28 37 50 68 91 123 166 224
-   * 涌流(自动+1) 100    1.50     100       100 150 225 338 507 760 1140 1709 2563 3845
-   * 聚能(点击×1.5)200   2.20     200       200 441 969 2130 4686 ...
-   * 共鸣(自动×1.5)500   2.20     500       500 1100 2421 5325 11713 ...
-   *
-   * 模拟(自动购买回本最短项, 5次/秒点击)：
-   *   累计 1万 ≈ 1.5分钟，10万 ≈ 5.5分钟，30分钟 ≈ 124万。
-   *   相邻数量级间隔 7.5s / 21.5s / 60s / 243s，逐级放缓但不出现硬墙。
-   *   纯点击不升级：1万需 2000秒 —— 升级收益明确，但无升级也能缓慢推进。
+   * 源初数值系统（数值平衡依据，2026-11-22 模拟验证）
+   * 成本 = ceil(base × coeff^level)，购买项仅可购买一次。
+   * 点击 = (1 + 凝聚 + 3×锐化 + 2×火花) × (1 + 0.5×聚能 + 0.5×棱镜) × 全局倍率
+   * 自动 = (涌流 + 3×湍流 + 回路) × (1 + 0.5×共鸣 + 0.5×时序钟) × 全局倍率
+   * 全局倍率 = 1 + 0.2×源火 + 0.5×奇点锚，倍率全部线性叠加，避免指数爆炸。
+   * 模拟（5 次点击/秒，优先购买回本最短项）：累计 1万约 1.6 分钟，
+   * 10万约 4.9 分钟，100万约 17.7 分钟，30分钟约 244 万，无数量级硬墙。
    */
   var UPGRADES = [
-    { id: "tap",   name: "凝聚", desc: "每次点击 +1 数值",          base: 15,  coeff: 1.35 },
-    { id: "auto",  name: "涌流", desc: "每秒自动 +1 数值",          base: 100, coeff: 1.5 },
-    { id: "tapm",  name: "聚能", desc: "点击收益 +50%（线性叠加）", base: 200, coeff: 2.2 },
-    { id: "autom", name: "共鸣", desc: "自动产出 +50%（线性叠加）", base: 500, coeff: 2.2 }
+    { id: "tap",       name: "凝聚", desc: "点击基数 +1",             base: 15,    coeff: 1.35 },
+    { id: "auto",      name: "涌流", desc: "自动基数 +1/秒",          base: 100,   coeff: 1.5 },
+    { id: "tapm",      name: "聚能", desc: "点击倍率 +50%（线性）",   base: 200,   coeff: 2.2 },
+    { id: "autom",     name: "共鸣", desc: "自动倍率 +50%（线性）",   base: 500,   coeff: 2.2 },
+    { id: "sharp",     name: "锐化", desc: "点击基数 +3",             base: 1500,  coeff: 3.0 },
+    { id: "turb",      name: "湍流", desc: "自动基数 +3/秒",          base: 5000,  coeff: 3.0 },
+    { id: "resonance", name: "源火", desc: "全局收益 +20%（线性）",   base: 50000, coeff: 4.0 }
   ];
+
+  var PURCHASES = [
+    { id: "spark",  name: "火花",   desc: "点击基数 +2",   cost: 600 },
+    { id: "loop",   name: "回路",   desc: "自动基数 +1/秒", cost: 2000 },
+    { id: "lens",   name: "棱镜",   desc: "点击倍率 +50%",  cost: 10000 },
+    { id: "clock",  name: "时序钟", desc: "自动倍率 +50%",  cost: 40000 },
+    { id: "anchor", name: "奇点锚", desc: "全局收益 +50%",  cost: 300000 }
+  ];
+
+  function purchaseNumber(index) {
+    return String(index + 1).padStart(2, "0");
+  }
+
+  // 密钥按键位偏移编码，源码中不保存明文
+  var DEV_KEY = [83, 121, 99, 35, 42, 35, 88, 79, 120].map(function (code, index) {
+    return String.fromCharCode(code ^ (7 + index * 3));
+  }).join("");
 
   var OPENING_STORY = [
     { speaker: "旁白", text: "混沌初开" },
@@ -110,7 +120,8 @@
   ];
 
   var unlockedStages = new Set(["origin"]);
-  var settings = { theme: "deep", newsSpeed: 1 };
+  var settings = { theme: "deep", newsSpeed: 1, devMode: false };
+  var devLock = { failures: 0, until: 0 };
   var stats = {
     playSeconds: 0,
     newsPlayed: 0,
@@ -127,9 +138,11 @@
   var numeric = {
     value: BN.from(0),
     total: BN.from(0),
-    levels: { tap: 0, auto: 0, tapm: 0, autom: 0 }
+    levels: { tap: 0, auto: 0, tapm: 0, autom: 0, sharp: 0, turb: 0, resonance: 0 },
+    purchased: new Set()
   };
   var valueEls = {};
+  var purchaseEls = {};
 
   var sidebarEl = document.getElementById("sidebar");
   var resourcesEl = document.getElementById("resource-bar");
@@ -140,6 +153,14 @@
   var valueRateEl = document.getElementById("value-rate");
   var perClickEl = document.getElementById("per-click");
   var upgradeGridEl = document.getElementById("upgrade-grid");
+  var purchaseGridEl = document.getElementById("purchase-grid");
+  var devKeyInputEl = document.getElementById("dev-key-input");
+  var devUnlockEl = document.getElementById("dev-unlock");
+  var devPanelEl = document.getElementById("dev-panel");
+  var devReadoutEl = document.getElementById("dev-readout");
+  var devHintEl = document.getElementById("dev-hint");
+  var devValueInputEl = document.getElementById("dev-value-input");
+  var devLevelInputEl = document.getElementById("dev-level-input");
   var newsTextEl = document.getElementById("news-text");
   var newsTimeEl = document.getElementById("news-time");
   var stageCardEl = document.getElementById("stage-card");
@@ -251,20 +272,10 @@
     var n = BN.from(value);
     if (!n.isFinite()) return n.m > 0 ? "∞" : "-∞";
     if (n.isZero()) return "0";
-    if (n.e >= 18) return n.toScientific(2);
+    if (n.e >= 3 || n.e <= -7) return n.toScientific(2);
     var v = n.toNumber();
-    if (v < 1000) {
-      if (v < 10) return (Math.round(v * 10) / 10).toString();
-      return Math.floor(v).toString();
-    }
-    var units = ["K", "M", "B", "T", "Qa"];
-    var tier = -1;
-    while (v >= 1000 && tier < units.length - 1) {
-      v /= 1000;
-      tier += 1;
-    }
-    var digits = v < 10 ? 2 : v < 100 ? 1 : 0;
-    return v.toFixed(digits) + units[tier];
+    if (v < 10) return (Math.round(v * 10) / 10).toString();
+    return Math.floor(v).toString();
   }
 
   function upgradeCost(definition) {
@@ -272,12 +283,24 @@
     return BN.from(definition.base).mul(BN.from(definition.coeff).powInt(level)).ceil();
   }
 
+  function hasPurchase(id) {
+    return numeric.purchased.has(id) ? 1 : 0;
+  }
+
+  function globalMultiplier() {
+    return BN.from(1 + 0.2 * numeric.levels.resonance + 0.5 * hasPurchase("anchor"));
+  }
+
   function clickGain() {
-    return BN.from(1 + numeric.levels.tap).mul(BN.from(1 + 0.5 * numeric.levels.tapm));
+    var base = 1 + numeric.levels.tap + 3 * numeric.levels.sharp + 2 * hasPurchase("spark");
+    var mult = 1 + 0.5 * numeric.levels.tapm + 0.5 * hasPurchase("lens");
+    return BN.from(base).mul(BN.from(mult)).mul(globalMultiplier());
   }
 
   function autoRate() {
-    return BN.from(numeric.levels.auto).mul(BN.from(1 + 0.5 * numeric.levels.autom));
+    var base = numeric.levels.auto + 3 * numeric.levels.turb + hasPurchase("loop");
+    var mult = 1 + 0.5 * numeric.levels.autom + 0.5 * hasPurchase("clock");
+    return BN.from(base).mul(BN.from(mult)).mul(globalMultiplier());
   }
 
   function gainValue(amount) {
@@ -325,6 +348,32 @@
     });
   }
 
+  function renderPurchases() {
+    purchaseGridEl.innerHTML = "";
+    PURCHASES.forEach(function (definition, index) {
+      var owned = hasPurchase(definition.id);
+      var cost = BN.from(definition.cost);
+      var affordable = !owned && numeric.value.gte(cost);
+      var card = document.createElement("button");
+      card.type = "button";
+      card.className = "purchase-card" + (affordable ? " affordable" : "");
+      card.dataset.purchaseId = definition.id;
+      card.disabled = owned || !affordable;
+      card.innerHTML =
+        '<span class="upgrade-name">' + purchaseNumber(index) + " · " + definition.name + "</span>" +
+        '<span class="upgrade-level' + (owned ? " purchase-owned" : "") + '">' + (owned ? "已购买" : "未购买") + "</span>" +
+        '<span class="upgrade-desc">' + definition.desc + "</span>" +
+        '<span class="upgrade-cost">' + (owned ? "已获得" : formatNumber(cost) + " 数值") + "</span>";
+      if (!owned) {
+        card.addEventListener("click", function () {
+          buyPurchase(definition.id);
+        });
+      }
+      purchaseGridEl.appendChild(card);
+      purchaseEls[definition.id] = card;
+    });
+  }
+
   function refreshUpgradeAffordability() {
     UPGRADES.forEach(function (definition) {
       var card = valueEls[definition.id];
@@ -336,6 +385,31 @@
         card.disabled = !affordable;
       }
     });
+    PURCHASES.forEach(function (definition) {
+      if (hasPurchase(definition.id)) return;
+      var card = purchaseEls[definition.id];
+      if (!card) return;
+      var affordable = numeric.value.gte(BN.from(definition.cost));
+      if (card.classList.contains("affordable") !== affordable) {
+        card.classList.toggle("affordable", affordable);
+        card.disabled = !affordable;
+      }
+    });
+  }
+
+  function buyPurchase(id) {
+    var definition = PURCHASES.find(function (item) { return item.id === id; });
+    if (!definition || hasPurchase(id)) return false;
+    var cost = BN.from(definition.cost);
+    if (numeric.value.lt(cost)) return false;
+    numeric.value = numeric.value.sub(cost);
+    numeric.purchased.add(id);
+    stats.totalPurchases += 1;
+    renderPurchases();
+    updateValueUI();
+    refreshUpgradeAffordability();
+    saveState();
+    return true;
   }
 
   function buyUpgrade(id) {
@@ -348,6 +422,7 @@
     stats.totalPurchases += 1;
     renderUpgrades();
     updateValueUI();
+    refreshUpgradeAffordability();
     saveState();
     return true;
   }
@@ -448,6 +523,132 @@
       });
       speedOptionsEl.appendChild(button);
     });
+
+    devPanelEl.hidden = !settings.devMode;
+    devUnlockEl.textContent = settings.devMode ? "已开启" : "解锁";
+    devKeyInputEl.value = "";
+    updateDevLockUI();
+    if (settings.devMode) renderDevReadout();
+  }
+
+  function devLockRemaining() {
+    return Math.max(0, devLock.until - Date.now());
+  }
+
+  function formatLockCountdown(ms) {
+    var total = Math.ceil(ms / 1000);
+    var minutes = Math.floor(total / 60);
+    var seconds = total % 60;
+    return minutes + ":" + String(seconds).padStart(2, "0");
+  }
+
+  function updateDevLockUI() {
+    if (settings.devMode) {
+      devHintEl.textContent = "开发者模式已开启";
+      devKeyInputEl.disabled = true;
+      devUnlockEl.disabled = true;
+      return;
+    }
+    var remaining = devLockRemaining();
+    if (remaining > 0) {
+      devKeyInputEl.disabled = true;
+      devUnlockEl.disabled = true;
+      devHintEl.textContent = "输入错误次数过多，" + formatLockCountdown(remaining) + " 后可重试";
+      return;
+    }
+    devKeyInputEl.disabled = false;
+    devUnlockEl.disabled = false;
+    devHintEl.textContent = devLock.failures > 0 ? "剩余尝试次数：" + (5 - devLock.failures) : "";
+  }
+
+  function renderDevReadout() {
+    if (!settings.devMode) return;
+    var levels = UPGRADES.map(function (definition) {
+      return definition.name + " " + numeric.levels[definition.id];
+    }).join(" / ");
+    var owned = PURCHASES.filter(function (definition) {
+      return hasPurchase(definition.id);
+    }).map(function (definition) { return definition.name; }).join(" / ") || "无";
+    devReadoutEl.textContent =
+      "数值: " + numeric.value.toScientific() + " (" + formatNumber(numeric.value) + ")\n" +
+      "累计: " + numeric.total.toScientific() + "\n" +
+      "峰值: " + stats.peakValue.toScientific() + "\n" +
+      "点击: " + clickGain().toScientific() + "\n" +
+      "自动: " + autoRate().toScientific() + "\n" +
+      "全局倍率: " + globalMultiplier().toScientific() + "\n" +
+      "升级: " + levels + "\n" +
+      "购买项: " + owned;
+  }
+
+  function setDevMode(on) {
+    settings.devMode = !!on;
+    devPanelEl.hidden = !settings.devMode;
+    devUnlockEl.textContent = settings.devMode ? "已开启" : "解锁";
+    devKeyInputEl.value = "";
+    updateDevLockUI();
+    if (settings.devMode) renderDevReadout();
+    saveState();
+  }
+
+  function runDevAction(action) {
+    if (!settings.devMode) return;
+    var devGrants = { gain1e3: "1e3", gain1e6: "1e6", gain1e300: "1e300" };
+    if (devGrants[action]) {
+      gainValue(BN.from(devGrants[action]));
+    } else if (action === "setValue") {
+      var target = BN.from(String(devValueInputEl.value).trim());
+      if (!target.isFinite() || target.lt(0)) {
+        showHint("请输入有效的非负数");
+        return;
+      }
+      numeric.value = target;
+      if (numeric.total.lt(target)) numeric.total = target;
+      if (stats.peakValue.lt(target)) stats.peakValue = target;
+      devValueInputEl.value = "";
+      updateValueUI();
+    } else if (action === "setLevels") {
+      var level = Math.floor(Number(devLevelInputEl.value));
+      if (!isFinite(level) || level < 0) {
+        showHint("请输入有效的等级");
+        return;
+      }
+      if (level > 1000000) level = 1000000;
+      UPGRADES.forEach(function (definition) { numeric.levels[definition.id] = level; });
+      devLevelInputEl.value = "";
+      renderUpgrades();
+      updateValueUI();
+    } else if (action === "levels") {
+      UPGRADES.forEach(function (definition) { numeric.levels[definition.id] += 10; });
+      renderUpgrades();
+      updateValueUI();
+    } else if (action === "buyAll") {
+      PURCHASES.forEach(function (definition) {
+        if (!hasPurchase(definition.id)) {
+          numeric.purchased.add(definition.id);
+          stats.totalPurchases += 1;
+        }
+      });
+      renderPurchases();
+      updateValueUI();
+    } else if (action === "resetValue") {
+      numeric.value = BN.from(0);
+      updateValueUI();
+    } else if (action === "replayStory") {
+      startStory(OPENING_STORY);
+    } else if (action === "unlock") {
+      STAGES.forEach(function (stage) { unlockedStages.add(stage.id); });
+      renderSidebar();
+    } else if (action === "readout") {
+      renderDevReadout();
+      return;
+    } else if (action === "close") {
+      setDevMode(false);
+      showHint("开发者模式已关闭");
+      return;
+    }
+    refreshUpgradeAffordability();
+    renderDevReadout();
+    saveState();
   }
 
   function applyTheme() {
@@ -486,6 +687,7 @@
     html += statRow("历史峰值", formatNumber(stats.peakValue));
     html += statRow("点击收益", formatNumber(clickGain()) + " / 次");
     html += statRow("自动产出", formatNumber(autoRate()) + " / 秒");
+    html += statRow("全局倍率", "×" + formatNumber(globalMultiplier()));
     html += statRow("累计点击", stats.totalClicks + " 次");
     html += "</div>";
 
@@ -494,6 +696,13 @@
       html += statRow(definition.name + " Lv." + numeric.levels[definition.id], formatNumber(upgradeCost(definition)) + " 下次");
     });
     html += statRow("购买总数", stats.totalPurchases + " 次");
+    html += "</div>";
+
+    html += '<div class="stats-group"><h3 class="stats-group-title">购买项</h3>';
+    PURCHASES.forEach(function (definition, index) {
+      html += statRow(purchaseNumber(index) + " · " + definition.name, hasPurchase(definition.id) ? "已购买" : formatNumber(BN.from(definition.cost)) + " 数值");
+    });
+    html += statRow("已拥有", numeric.purchased.size + " / " + PURCHASES.length);
     html += "</div>";
 
     html += '<div class="stats-group"><h3 class="stats-group-title">资源</h3>';
@@ -536,6 +745,7 @@
     if (document.visibilityState !== "visible") return;
     stats.playSeconds += 1;
     sessionSeconds += 1;
+    updateDevLockUI();
     if (currentView === "stats" && !statsPanelEl.hidden) renderStats();
   }
 
@@ -575,19 +785,23 @@
 
   function buildSaveData() {
     return {
-      version: 4,
+      version: 6,
       unlockedStages: Array.from(unlockedStages),
       activeStageId: activeStageId,
-      settings: { theme: settings.theme, newsSpeed: settings.newsSpeed },
+      settings: {
+        theme: settings.theme,
+        newsSpeed: settings.newsSpeed,
+        devMode: settings.devMode
+      },
+      devLock: { failures: devLock.failures, until: devLock.until },
       numeric: {
         value: numeric.value.toScientific(),
         total: numeric.total.toScientific(),
-        levels: {
-          tap: numeric.levels.tap,
-          auto: numeric.levels.auto,
-          tapm: numeric.levels.tapm,
-          autom: numeric.levels.autom
-        }
+        levels: UPGRADES.reduce(function (acc, definition) {
+          acc[definition.id] = numeric.levels[definition.id];
+          return acc;
+        }, {}),
+        purchased: Array.from(numeric.purchased)
       },
       stats: {
         playSeconds: stats.playSeconds,
@@ -625,6 +839,19 @@
     })) {
       settings.newsSpeed = data.settings.newsSpeed;
     }
+    if (data.settings && typeof data.settings.devMode === "boolean") {
+      settings.devMode = data.settings.devMode;
+    }
+    if (data.devLock && typeof data.devLock === "object") {
+      var failures = data.devLock.failures;
+      var until = data.devLock.until;
+      if (typeof failures === "number" && isFinite(failures) && failures >= 0 && failures < 5) {
+        devLock.failures = Math.floor(failures);
+      }
+      if (typeof until === "number" && isFinite(until) && until >= 0) {
+        devLock.until = until;
+      }
+    }
     if (Array.isArray(data.unlockedStages)) {
       data.unlockedStages.forEach(function (id) {
         if (STAGES.some(function (stage) { return stage.id === id; })) {
@@ -654,6 +881,14 @@
           var level = data.numeric.levels[definition.id];
           if (typeof level === "number" && isFinite(level) && level >= 0) {
             numeric.levels[definition.id] = Math.floor(level);
+          }
+        });
+      }
+      if (Array.isArray(data.numeric.purchased)) {
+        numeric.purchased.clear();
+        data.numeric.purchased.forEach(function (id) {
+          if (PURCHASES.some(function (item) { return item.id === id; })) {
+            numeric.purchased.add(id);
           }
         });
       }
@@ -713,6 +948,7 @@
         return stage.id === activeStageId;
       }) || STAGES[0]);
       renderUpgrades();
+      renderPurchases();
       updateValueUI();
       refreshNewsQueue();
       showHint("加密存档已导入");
@@ -885,6 +1121,40 @@
     importFileEl.value = "";
   });
 
+  devUnlockEl.addEventListener("click", function () {
+    if (devLockRemaining() > 0) {
+      updateDevLockUI();
+      return;
+    }
+    if (devKeyInputEl.value === DEV_KEY) {
+      devLock.failures = 0;
+      devLock.until = 0;
+      setDevMode(true);
+      showHint("开发者模式已开启");
+      return;
+    }
+    devKeyInputEl.value = "";
+    devLock.failures += 1;
+    if (devLock.failures >= 5) {
+      devLock.until = Date.now() + 5 * 60 * 1000;
+      devLock.failures = 0;
+      showHint("连续错误 5 次，已锁定 5 分钟");
+    } else {
+      showHint("密钥错误，剩余 " + (5 - devLock.failures) + " 次尝试");
+    }
+    saveState();
+    updateDevLockUI();
+  });
+  devPanelEl.addEventListener("click", function (event) {
+    var target = event.target;
+    while (target && target !== devPanelEl && !(target.dataset && target.dataset.devAction)) {
+      target = target.parentElement;
+    }
+    if (target && target !== devPanelEl && target.dataset && target.dataset.devAction) {
+      runDevAction(target.dataset.devAction);
+    }
+  });
+
   window.LMTL = {
     unlockStage: unlockStage,
     getUnlockedStages: function () {
@@ -907,6 +1177,7 @@
       }
     },
     buyUpgrade: buyUpgrade,
+    buyPurchase: buyPurchase,
     getNumeric: function () {
       return {
         value: numeric.value.toNumber(),
@@ -914,10 +1185,13 @@
         total: numeric.total.toNumber(),
         totalText: numeric.total.toScientific(),
         levels: Object.assign({}, numeric.levels),
+        purchased: Array.from(numeric.purchased),
         clickGain: clickGain().toNumber(),
         clickGainText: clickGain().toScientific(),
         autoRate: autoRate().toNumber(),
-        autoRateText: autoRate().toScientific()
+        autoRateText: autoRate().toScientific(),
+        globalMultiplier: globalMultiplier().toNumber(),
+        globalMultiplierText: globalMultiplier().toScientific()
       };
     },
     formatBigNumber: function (text) {
@@ -930,6 +1204,7 @@
   renderSettings();
   setActiveStage(activeStageId);
   renderUpgrades();
+  renderPurchases();
   updateValueUI();
   refreshNewsQueue();
   updateClock();

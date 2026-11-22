@@ -99,6 +99,19 @@
     .upgrade-level { font: 13px Consolas, monospace; color: var(--dim); text-align: right; }
     .upgrade-desc { grid-column: 1 / -1; font-size: 12px; color: var(--dim); }
     .upgrade-cost { grid-column: 1 / -1; font: 13px Consolas, monospace; color: var(--gold); }
+    .section-label { color: var(--gold); font-size: 13px; font-weight: 700; letter-spacing: .1em; }
+    .purchase-grid { width: min(680px, 100%); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .purchase-card { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; padding: 12px 14px; border: 1px solid var(--panel-border); border-radius: 2px; background: var(--bg2); color: var(--text); text-align: left; cursor: pointer; }
+    .purchase-card:disabled { cursor: not-allowed; opacity: .55; }
+    .purchase-card.affordable { border-color: var(--gold); }
+    .purchase-card.affordable:hover { background: var(--bg3); }
+    .purchase-owned { color: var(--cyan); }
+    .setting-input { padding: 7px 12px; border: 1px solid var(--panel-border); border-radius: 2px; background: var(--bg2); color: var(--text); font: 13px Consolas, monospace; }
+    .setting-input:focus { outline: none; border-color: var(--cyan); }
+    .dev-panel { padding: 14px; border: 1px dashed var(--panel-border); background: var(--bg2); display: flex; flex-direction: column; gap: 12px; }
+    .dev-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+    .dev-inputs { display: flex; flex-wrap: wrap; gap: 8px; }
+    .dev-readout { margin: 0; min-height: 18px; color: var(--dim); font: 12px/1.5 Consolas, monospace; white-space: pre-wrap; word-break: break-all; }
 
     /* 设置面板 */
     .settings-panel { width: min(760px, 100%); margin: auto; padding: 32px; display: flex; flex-direction: column; gap: 24px; }
@@ -147,7 +160,7 @@
       .res-amount { font-size: 16px; }
       .value-core { width: 150px; height: 150px; }
       .value-amount { font-size: 26px; }
-      .upgrade-grid { grid-template-columns: 1fr; }
+      .upgrade-grid, .purchase-grid { grid-template-columns: 1fr; }
       .settings-panel { padding: 20px 16px; gap: 18px; }
       .stats-panel { padding: 20px 16px; }
       .stats-view { grid-template-columns: 1fr; }
@@ -193,7 +206,10 @@
                   <span class="value-rate" id="value-rate">+0/秒</span>
                 </button>
                 <span class="per-click" id="per-click">+1 / 点击</span>
+                <div class="section-label">升级</div>
                 <div class="upgrade-grid" id="upgrade-grid"></div>
+                <div class="section-label">购买项</div>
+                <div class="purchase-grid" id="purchase-grid"></div>
               </div>
             </section>
 
@@ -217,6 +233,35 @@
                   </div>
                 </div>
                 <p class="setting-hint" id="save-hint"></p>
+                <div class="setting-row">
+                  <span class="setting-label">开发者模式</span>
+                  <div class="setting-options">
+                    <input class="setting-input" id="dev-key-input" type="password" placeholder="输入密钥" autocomplete="off">
+                    <button class="setting-btn" id="dev-unlock" type="button">解锁</button>
+                  </div>
+                  <p class="setting-hint" id="dev-hint"></p>
+                  <div class="dev-panel" id="dev-panel" hidden>
+                    <div class="dev-inputs">
+                      <input class="setting-input" id="dev-value-input" type="text" placeholder="目标数值，如 1e500">
+                      <button class="setting-btn" type="button" data-dev-action="setValue">设定数值</button>
+                      <input class="setting-input" id="dev-level-input" type="number" min="0" step="1" placeholder="目标等级">
+                      <button class="setting-btn" type="button" data-dev-action="setLevels">设定全部等级</button>
+                    </div>
+                    <div class="dev-grid">
+                      <button class="setting-btn" type="button" data-dev-action="gain1e3">+1e3 数值</button>
+                      <button class="setting-btn" type="button" data-dev-action="gain1e6">+1e6 数值</button>
+                      <button class="setting-btn" type="button" data-dev-action="gain1e300">+1e300 数值</button>
+                      <button class="setting-btn" type="button" data-dev-action="levels">升级 +10 级</button>
+                      <button class="setting-btn" type="button" data-dev-action="buyAll">购买全部购买项</button>
+                      <button class="setting-btn" type="button" data-dev-action="resetValue">数值归零</button>
+                      <button class="setting-btn" type="button" data-dev-action="replayStory">重播开场剧情</button>
+                      <button class="setting-btn" type="button" data-dev-action="unlock">解锁全部阶段</button>
+                      <button class="setting-btn" type="button" data-dev-action="readout">刷新内部状态</button>
+                      <button class="setting-btn" type="button" data-dev-action="close">关闭开发者模式</button>
+                    </div>
+                    <pre class="dev-readout" id="dev-readout"></pre>
+                  </div>
+                </div>
               </div>
             </section>
 

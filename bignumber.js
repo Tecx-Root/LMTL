@@ -200,7 +200,7 @@
       text = (Number(text) / 10).toFixed(fixed);
       e += 1;
     }
-    if (digits == null && fixed > 0) text = text.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
+    if (fixed > 0) text = text.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
     return text + "e" + e;
   };
 

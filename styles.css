@@ -408,6 +408,52 @@ body {
   color: var(--gold);
 }
 
+.section-label {
+  color: var(--gold);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+/* 购买项网格 */
+.purchase-grid {
+  width: min(680px, 100%);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.purchase-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 2px;
+  background: var(--bg2);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.purchase-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.purchase-card.affordable {
+  border-color: var(--gold);
+}
+
+.purchase-card.affordable:hover {
+  background: var(--bg3);
+}
+
+.purchase-owned {
+  color: var(--cyan);
+}
+
 /* 设置面板 */
 .settings-panel {
   width: min(760px, 100%);
@@ -477,6 +523,45 @@ body {
   color: var(--dim);
   font-size: 12px;
   min-height: 16px;
+}
+
+.setting-input {
+  padding: 7px 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: 2px;
+  background: var(--bg2);
+  color: var(--text);
+  font: 13px Consolas, "Courier New", monospace;
+}
+
+.setting-input:focus {
+  outline: none;
+  border-color: var(--cyan);
+}
+
+.dev-panel {
+  padding: 14px;
+  border: 1px dashed var(--panel-border);
+  background: var(--bg2);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dev-grid,
+.dev-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dev-readout {
+  margin: 0;
+  min-height: 18px;
+  color: var(--dim);
+  font: 12px/1.5 Consolas, "Courier New", monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 
 /* 统计面板 */
@@ -699,7 +784,8 @@ body {
     font-size: 26px;
   }
 
-  .upgrade-grid {
+  .upgrade-grid,
+  .purchase-grid {
     grid-template-columns: 1fr;
   }
 
