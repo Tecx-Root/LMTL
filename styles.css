@@ -265,6 +265,33 @@ body {
   gap: 18px;
 }
 
+.stage-tabs {
+  display: inline-flex;
+}
+
+.stage-tab {
+  padding: 3px 10px;
+  margin-left: -1px;
+  border: 1px solid var(--panel-border);
+  background: var(--bg2);
+  color: var(--dim);
+  font: 12px Consolas, "Courier New", monospace;
+  cursor: pointer;
+}
+
+.stage-tab:first-child {
+  margin-left: 0;
+}
+
+.stage-tab.active {
+  position: relative;
+  z-index: 1;
+  border-color: var(--cyan);
+  box-shadow: inset 0 0 0 1px var(--cyan);
+  color: var(--cyan);
+  background: var(--bg3);
+}
+
 .stage-title {
   margin: 0;
   color: var(--text);

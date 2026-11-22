@@ -79,6 +79,10 @@
     .nav-item.active { color: var(--gold); border-right: 3px solid var(--gold); background: var(--bg3); }
     .main { flex: 1; min-height: 0; overflow-y: auto; padding: 20px; display: flex; align-items: center; justify-content: center; background: var(--panel); }
     .stage-card { width: min(760px, 100%); margin: auto; padding: 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; }
+    .stage-tabs { display: inline-flex; }
+    .stage-tab { padding: 3px 10px; margin-left: -1px; border: 1px solid var(--panel-border); background: var(--bg2); color: var(--dim); font: 12px Consolas, monospace; cursor: pointer; }
+    .stage-tab:first-child { margin-left: 0; }
+    .stage-tab.active { position: relative; z-index: 1; border-color: var(--cyan); box-shadow: inset 0 0 0 1px var(--cyan); color: var(--cyan); background: var(--bg3); }
     .stage-title { margin: 0; color: var(--text); font-size: 22px; text-align: center; }
     .stage-desc { margin: 0; color: var(--dim); font-size: 13px; line-height: 1.6; text-align: center; }
     .value-core-wrap { position: relative; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 12px; }
@@ -198,6 +202,9 @@
           <!-- 主要内容栏 -->
           <main class="main" id="main">
             <section class="stage-card" id="stage-card">
+              <div class="stage-tabs" id="stage-tabs" role="tablist" aria-label="数值子标签">
+                <button class="stage-tab active" id="stage-tab-upgrade" type="button" role="tab" aria-selected="true" data-stage-tab="upgrade">升级</button>
+              </div>
               <h2 class="stage-title" id="stage-title">数值</h2>
               <p class="stage-desc" id="stage-desc"></p>
               <div class="value-core-wrap" id="value-core-wrap">
