@@ -141,7 +141,7 @@
 
     /* 时间晶体 */
     .crystal-panel { width: min(760px, 100%); margin: auto; padding: 32px; display: flex; flex-direction: column; gap: 20px; }
-    .crystal-overview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .crystal-overview { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
     .crystal-metric { padding: 12px 14px; border: 1px solid var(--panel-border); background: var(--bg2); display: flex; flex-direction: column; gap: 6px; }
     .crystal-metric span { color: var(--dim); font-size: 12px; }
     .crystal-metric strong { color: var(--cyan); font: 700 20px Consolas, monospace; }
@@ -150,6 +150,7 @@
     .crystal-shop { padding: 16px 18px; border: 1px solid var(--panel-border); background: var(--bg2); display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
     .crystal-shop-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; width: 100%; color: var(--gold); }
     .crystal-shop-head span { color: var(--dim); font-size: 12px; }
+    .crystal-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
     /* 剧情：全屏覆盖层 */
     .story-panel { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 36px; padding: 60px; background: var(--story-bg); }
@@ -166,6 +167,9 @@
     .story-progress { color: var(--dim); font: 13px Consolas, monospace; }
     .story-next { padding: 8px 28px; border: 1px solid #4a5058; background: rgba(0,0,0,.4); color: var(--text); font-size: 14px; cursor: pointer; }
     .story-next:hover { border-color: var(--cyan); }
+    .offline-banner { position: fixed; z-index: 200; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: min(720px, calc(100% - 32px)); display: flex; align-items: center; gap: 14px; padding: 12px 16px; border: 1px solid var(--cyan); background: var(--bg2); color: var(--text); font: 13px Consolas, monospace; }
+    .offline-close { padding: 0 6px; border: 0; background: transparent; color: var(--dim); font-size: 18px; cursor: pointer; }
+    .offline-close:hover { color: var(--red); }
     @media (max-width: 760px) {
       :root { --side-w: 130px; }
       .game-title { font-size: 18px; }
@@ -182,7 +186,7 @@
       .stats-panel { padding: 20px 16px; }
       .stats-view { grid-template-columns: 1fr; }
       .crystal-panel { padding: 20px 16px; }
-      .crystal-overview { grid-template-columns: 1fr; }
+      .crystal-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .story-panel { padding: 48px 16px; gap: 24px; }
       .story-stage { flex-direction: column; align-items: center; }
       .story-portrait { width: 150px; flex: 0 0 150px; }
@@ -247,6 +251,11 @@
                   <div class="setting-options" id="speed-options"></div>
                 </div>
                 <div class="setting-row">
+                  <span class="setting-label">离线时自动关闭时间加速</span>
+                  <div class="setting-options" id="offline-accel-options"></div>
+                  <p class="setting-hint">开启时离线按 ×1 结算并保留加速余量；关闭时离线继续消耗加速余量。</p>
+                </div>
+                <div class="setting-row">
                   <span class="setting-label">存档</span>
                   <div class="setting-options">
                     <button class="setting-btn" id="export-save" type="button">导出存档</button>
@@ -277,6 +286,7 @@
                       <button class="setting-btn" type="button" data-dev-action="buyAll">购买全部购买项</button>
                       <button class="setting-btn" type="button" data-dev-action="crystals">+10 时间晶体</button>
                       <button class="setting-btn" type="button" data-dev-action="charge">填满晶体蓄能</button>
+                      <button class="setting-btn" type="button" data-dev-action="accelFill">加速时长 +100 秒</button>
                       <button class="setting-btn" type="button" data-dev-action="resetValue">数值归零</button>
                       <button class="setting-btn" type="button" data-dev-action="replayStory">重播开场剧情</button>
                       <button class="setting-btn" type="button" data-dev-action="unlock">解锁全部阶段</button>
@@ -296,10 +306,11 @@
 
             <section class="crystal-panel" id="crystal-panel" hidden>
               <h2 class="settings-title">时间晶体</h2>
-              <p class="stage-desc">时间晶体独立于阶段资源。蓄能满后收获，消耗晶体提升全局游戏速度。</p>
+              <p class="stage-desc">时间晶体独立于阶段资源。蓄能满后收获，用晶体兑换加速时长，加速的开始与停止由你决定。</p>
               <div class="crystal-overview">
                 <div class="crystal-metric"><span>当前晶体</span><strong id="crystal-amount">0</strong></div>
                 <div class="crystal-metric"><span>累计晶体</span><strong id="crystal-total">0</strong></div>
+                <div class="crystal-metric"><span>加速余量</span><strong id="crystal-pool">0 秒</strong></div>
                 <div class="crystal-metric"><span>游戏速度</span><strong id="crystal-speed">×1.00</strong></div>
               </div>
               <div class="crystal-progress-track"><div class="crystal-progress-fill" id="crystal-progress"></div></div>
@@ -309,11 +320,16 @@
               </div>
               <div class="crystal-shop">
                 <div class="crystal-shop-head">
-                  <strong>时间加速 <span id="crystal-speed-level">Lv.0</span></strong>
-                  <span>每级 +10% 游戏速度</span>
+                  <strong>时间加速</strong>
+                  <span id="crystal-accel-status">未激活</span>
                 </div>
-                <p class="stage-desc">游戏速度同时影响数值自动产出与晶体蓄能速度。</p>
-                <button class="setting-btn" id="crystal-buy-speed" type="button">升级</button>
+                <p class="stage-desc">1 时间晶体兑换 10 秒加速时间。加速期间游戏速度为 ×2，可随时停止，剩余时长保留。</p>
+                <div class="crystal-controls">
+                  <input class="setting-input" id="crystal-exchange-input" type="number" min="1" step="1" value="1" aria-label="兑换晶体数量">
+                  <button class="setting-btn" id="crystal-exchange" type="button">兑换加速时间</button>
+                  <button class="setting-btn" id="crystal-start" type="button">开始加速</button>
+                  <button class="setting-btn" id="crystal-stop" type="button">停止加速</button>
+                </div>
               </div>
             </section>
           </main>
@@ -336,6 +352,12 @@
         <button class="story-next" id="story-next" type="button">继续</button>
       </div>
     </section>
+
+    <!-- 离线收益结算提示 -->
+    <div class="offline-banner" id="offline-banner" hidden>
+      <span id="offline-summary"></span>
+      <button class="offline-close" id="offline-close" type="button" title="关闭">×</button>
+    </div>
   </div>
 
   <script src="bignumber.js"></script>

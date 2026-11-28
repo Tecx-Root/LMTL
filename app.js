@@ -73,16 +73,16 @@
 
   /*
    * 时间晶体（杂项独立机制，不属于任何阶段资源）
-   * 蓄能间隔 20 秒/次，最多存 12 次（约 4 分钟离线蓄能上限）。
-   * 加速成本 = ceil(2 × 1.5^等级)，每级 +10% 游戏速度，线性叠加。
-   * 模拟（满蓄能即收获，余额够即加速）：首次加速 40 秒，5 分钟 ×1.40，
-   * 10 分钟 ×1.50，30 分钟 ×1.80；成本 2/3/5/7/11/16/23…，无数量级硬墙。
+   * 蓄能间隔 20 秒/次，最多存 12 次。
+   * 兑换：1 晶体 = 10 秒加速时间；玩家自行开始/停止加速，加速时游戏速度 ×2。
+   * 加速时长按真实时间扣除，停止后剩余时长保留；未加速时速度恒为 ×1。
+   * 加速期间蓄能也按 ×2 计算，因此持续收获晶体刚好能维持 ×2 加速，
+   * 停止或忘记收获则加速自然结束，不存在数值膨胀或时间墙。
    */
   var CRYSTAL_INTERVAL = 20;
   var CRYSTAL_MAX_CHARGES = 12;
-  var SPEED_STEP = 0.1;
-  var SPEED_COST_BASE = 2;
-  var SPEED_COST_COEFF = 1.5;
+  var ACCEL_SPEED = 2;
+  var SECONDS_PER_CRYSTAL = 10;
 
   /*
    * 源初数值系统（数值平衡依据，2026-11-22 模拟验证）
@@ -142,7 +142,7 @@
   ];
 
   var unlockedStages = new Set(["origin"]);
-  var settings = { theme: "deep", newsSpeed: 1, devMode: false };
+  var settings = { theme: "deep", newsSpeed: 1, devMode: false, offlineStopAccel: true };
   var devLock = { failures: 0, until: 0 };
   var stats = {
     playSeconds: 0,
@@ -168,7 +168,10 @@
     total: BN.from(0),
     charges: 0,
     progress: 0,
-    speedLevel: 0,
+    accelPool: 0,
+    accelActive: false,
+    exchanged: 0,
+    accelUsed: 0,
     harvested: 0,
     harvestActions: 0
   };
@@ -199,8 +202,12 @@
   var crystalProgressEl = document.getElementById("crystal-progress");
   var crystalHintEl = document.getElementById("crystal-hint");
   var crystalHarvestEl = document.getElementById("crystal-harvest");
-  var crystalLevelEl = document.getElementById("crystal-speed-level");
-  var crystalBuyEl = document.getElementById("crystal-buy-speed");
+  var crystalPoolEl = document.getElementById("crystal-pool");
+  var crystalAccelStatusEl = document.getElementById("crystal-accel-status");
+  var crystalExchangeInputEl = document.getElementById("crystal-exchange-input");
+  var crystalExchangeEl = document.getElementById("crystal-exchange");
+  var crystalStartEl = document.getElementById("crystal-start");
+  var crystalStopEl = document.getElementById("crystal-stop");
   var newsTextEl = document.getElementById("news-text");
   var newsTimeEl = document.getElementById("news-time");
   var stageCardEl = document.getElementById("stage-card");
@@ -209,6 +216,7 @@
   var statsViewEl = document.getElementById("stats-view");
   var themeOptionsEl = document.getElementById("theme-options");
   var speedOptionsEl = document.getElementById("speed-options");
+  var offlineAccelOptionsEl = document.getElementById("offline-accel-options");
   var exportSaveEl = document.getElementById("export-save");
   var importSaveEl = document.getElementById("import-save");
   var importFileEl = document.getElementById("import-file");
@@ -220,6 +228,9 @@
   var storyLineEl = document.getElementById("story-line");
   var storyProgressEl = document.getElementById("story-progress");
   var storyNextEl = document.getElementById("story-next");
+  var offlineBannerEl = document.getElementById("offline-banner");
+  var offlineSummaryEl = document.getElementById("offline-summary");
+  var offlineCloseEl = document.getElementById("offline-close");
 
   var activeStageId = "origin";
   var currentView = "stage";
@@ -282,9 +293,9 @@
     miscGroup.classList.toggle("nav-active-group", currentView === "settings" || currentView === "stats" || currentView === "crystal");
     addNavSep();
 
-    addNavItem("nav-sub" + (currentView === "crystal" ? " active" : ""), "时间晶体", openCrystal);
     addNavItem("nav-sub" + (currentView === "settings" ? " active" : ""), "设置", openSettings);
     addNavItem("nav-sub" + (currentView === "stats" ? " active" : ""), "统计", openStats);
+    addNavItem("nav-sub" + (currentView === "crystal" ? " active" : ""), "时间晶体", openCrystal);
   }
 
   function renderResources(stage) {
@@ -320,22 +331,18 @@
   }
 
   function gameSpeed() {
-    return 1 + SPEED_STEP * timeCrystal.speedLevel;
-  }
-
-  function speedCost() {
-    return BN.from(SPEED_COST_BASE).mul(BN.from(SPEED_COST_COEFF).powInt(timeCrystal.speedLevel)).ceil();
+    return timeCrystal.accelActive ? ACCEL_SPEED : 1;
   }
 
   function renderCrystalUI() {
     if (!crystalPanelEl) return;
-    var cost = speedCost();
     crystalAmountEl.textContent = formatNumber(timeCrystal.bank);
     crystalTotalEl.textContent = formatNumber(timeCrystal.total);
+    crystalPoolEl.textContent = timeCrystal.accelPool.toFixed(1) + " 秒";
     crystalSpeedEl.textContent = "×" + gameSpeed().toFixed(2);
-    crystalLevelEl.textContent = "Lv." + timeCrystal.speedLevel;
-    crystalBuyEl.textContent = "升级（" + formatNumber(cost) + " 时间晶体）";
-    crystalBuyEl.disabled = timeCrystal.bank.lt(cost);
+    crystalAccelStatusEl.textContent = timeCrystal.accelActive ? "加速中" : "未激活";
+    crystalStartEl.disabled = timeCrystal.accelActive || timeCrystal.accelPool <= 0;
+    crystalStopEl.disabled = !timeCrystal.accelActive;
     crystalHarvestEl.disabled = timeCrystal.charges < 1;
     crystalHarvestEl.textContent = timeCrystal.charges > 0 ? "收获 " + timeCrystal.charges + " 个时间晶体" : "蓄能中";
     var percent = Math.min(100, (timeCrystal.progress / CRYSTAL_INTERVAL) * 100);
@@ -355,13 +362,41 @@
     saveState();
   }
 
-  function buyGameSpeed() {
-    var cost = speedCost();
-    if (timeCrystal.bank.lt(cost)) return;
+  function exchangeCrystals() {
+    var amount = Math.floor(Number(crystalExchangeInputEl.value));
+    if (!isFinite(amount) || amount < 1 || amount > 1000000) {
+      showHint("请输入 1 到 1000000 之间的晶体数量");
+      return;
+    }
+    var cost = BN.from(amount);
+    if (timeCrystal.bank.lt(cost)) {
+      showHint("时间晶体不足");
+      return;
+    }
     timeCrystal.bank = timeCrystal.bank.sub(cost);
-    timeCrystal.speedLevel += 1;
+    timeCrystal.accelPool += amount * SECONDS_PER_CRYSTAL;
+    timeCrystal.exchanged += amount;
+    crystalExchangeInputEl.value = "";
     updateValueUI();
     saveState();
+  }
+
+  function startAcceleration() {
+    if (timeCrystal.accelActive || timeCrystal.accelPool <= 0) return;
+    timeCrystal.accelActive = true;
+    updateValueUI();
+    saveState();
+  }
+
+  function stopAcceleration() {
+    if (!timeCrystal.accelActive) return;
+    timeCrystal.accelActive = false;
+    updateValueUI();
+    saveState();
+  }
+
+  function stopAccelerationForOffline() {
+    if (settings.offlineStopAccel) stopAcceleration();
   }
 
   function upgradeCost(definition) {
@@ -547,7 +582,18 @@
     var now = Date.now();
     var dt = Math.max(0, Math.min((now - lastTick) / 1000, 1));
     lastTick = now;
-    var scaledDt = dt * gameSpeed();
+    if (document.visibilityState !== "visible" && timeCrystal.accelActive) stopAccelerationForOffline();
+    var accelDt = 0;
+    if (timeCrystal.accelActive && timeCrystal.accelPool > 0) {
+      accelDt = Math.min(dt, timeCrystal.accelPool);
+      timeCrystal.accelPool -= accelDt;
+      timeCrystal.accelUsed += accelDt;
+      if (timeCrystal.accelPool <= 0) {
+        timeCrystal.accelPool = 0;
+        timeCrystal.accelActive = false;
+      }
+    }
+    var scaledDt = dt - accelDt + accelDt * ACCEL_SPEED;
     var rate = autoRate();
     if (rate.gt(0) && scaledDt > 0) gainValue(rate.mul(scaledDt));
     timeCrystal.progress += scaledDt;
@@ -633,6 +679,24 @@
       speedOptionsEl.appendChild(button);
     });
 
+    offlineAccelOptionsEl.innerHTML = "";
+    [
+      { value: true, name: "自动关闭" },
+      { value: false, name: "保持开启" }
+    ].forEach(function (option) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "setting-option" + (settings.offlineStopAccel === option.value ? " active" : "");
+      button.textContent = option.name;
+      button.addEventListener("click", function () {
+        settings.offlineStopAccel = option.value;
+        if (settings.offlineStopAccel) stopAcceleration();
+        saveState();
+        renderSettings();
+      });
+      offlineAccelOptionsEl.appendChild(button);
+    });
+
     devPanelEl.hidden = !settings.devMode;
     devUnlockEl.textContent = settings.devMode ? "已开启" : "解锁";
     devKeyInputEl.value = "";
@@ -688,7 +752,8 @@
       "升级: " + levels + "\n" +
       "购买项: " + owned + "\n" +
       "时间晶体: " + timeCrystal.bank.toScientific() + "（累计 " + timeCrystal.total.toScientific() + "）\n" +
-      "游戏速度: ×" + gameSpeed().toFixed(2) + "（Lv." + timeCrystal.speedLevel + "）";
+      "加速余量: " + timeCrystal.accelPool.toFixed(1) + " 秒（" + (timeCrystal.accelActive ? "加速中" : "未激活") + "）\n" +
+      "游戏速度: ×" + gameSpeed().toFixed(2);
   }
 
   function setDevMode(on) {
@@ -748,6 +813,9 @@
       updateValueUI();
     } else if (action === "charge") {
       timeCrystal.charges = CRYSTAL_MAX_CHARGES;
+      updateValueUI();
+    } else if (action === "accelFill") {
+      timeCrystal.accelPool += 100;
       updateValueUI();
     } else if (action === "resetValue") {
       numeric.value = BN.from(0);
@@ -834,8 +902,10 @@
     html += statRow("当前晶体", formatNumber(timeCrystal.bank) + " 个");
     html += statRow("累计收获", formatNumber(timeCrystal.total) + " 个");
     html += statRow("收获次数", timeCrystal.harvestActions + " 次");
-    html += statRow("游戏速度", "×" + gameSpeed().toFixed(2) + "（Lv." + timeCrystal.speedLevel + "）");
-    html += statRow("下次加速", formatNumber(speedCost()) + " 个时间晶体");
+    html += statRow("累计兑换", timeCrystal.exchanged + " 个晶体");
+    html += statRow("加速余量", timeCrystal.accelPool.toFixed(1) + " 秒");
+    html += statRow("累计加速", timeCrystal.accelUsed.toFixed(1) + " 秒");
+    html += statRow("游戏速度", "×" + gameSpeed().toFixed(2) + "（" + (timeCrystal.accelActive ? "加速中" : "未激活") + "）");
     html += statRow("蓄能状态", Math.floor(timeCrystal.progress) + "/" + CRYSTAL_INTERVAL + " 秒 · 已存 " + timeCrystal.charges + "/" + CRYSTAL_MAX_CHARGES);
     html += "</div>";
 
@@ -913,13 +983,15 @@
 
   function buildSaveData() {
     return {
-      version: 7,
+      version: 8,
+      lastSeen: Date.now(),
       unlockedStages: Array.from(unlockedStages),
       activeStageId: activeStageId,
       settings: {
         theme: settings.theme,
         newsSpeed: settings.newsSpeed,
-        devMode: settings.devMode
+        devMode: settings.devMode,
+        offlineStopAccel: settings.offlineStopAccel
       },
       devLock: { failures: devLock.failures, until: devLock.until },
       numeric: {
@@ -936,7 +1008,10 @@
         total: timeCrystal.total.toScientific(),
         charges: timeCrystal.charges,
         progress: timeCrystal.progress,
-        speedLevel: timeCrystal.speedLevel,
+        accelPool: timeCrystal.accelPool,
+        accelActive: false,
+        exchanged: timeCrystal.exchanged,
+        accelUsed: timeCrystal.accelUsed,
         harvested: timeCrystal.harvested,
         harvestActions: timeCrystal.harvestActions
       },
@@ -978,6 +1053,9 @@
     }
     if (data.settings && typeof data.settings.devMode === "boolean") {
       settings.devMode = data.settings.devMode;
+    }
+    if (data.settings && typeof data.settings.offlineStopAccel === "boolean") {
+      settings.offlineStopAccel = data.settings.offlineStopAccel;
     }
     if (data.devLock && typeof data.devLock === "object") {
       var failures = data.devLock.failures;
@@ -1043,9 +1121,24 @@
       if (isFinite(savedProgress) && savedProgress >= 0) {
         timeCrystal.progress = Math.min(CRYSTAL_INTERVAL - 0.001, savedProgress);
       }
-      var savedLevel = Number(data.timeCrystal.speedLevel);
-      if (isFinite(savedLevel) && savedLevel >= 0) {
-        timeCrystal.speedLevel = Math.min(1000000, Math.floor(savedLevel));
+      var savedPool = Number(data.timeCrystal.accelPool);
+      if (isFinite(savedPool) && savedPool >= 0) {
+        timeCrystal.accelPool = Math.min(1000000000, savedPool);
+      } else {
+        // 旧存档的永久加速等级折算为加速时长
+        var savedLevel = Number(data.timeCrystal.speedLevel);
+        if (isFinite(savedLevel) && savedLevel > 0) {
+          timeCrystal.accelPool = Math.min(1000000000, Math.floor(savedLevel) * SECONDS_PER_CRYSTAL);
+        }
+      }
+      timeCrystal.accelActive = !settings.offlineStopAccel && data.timeCrystal.accelActive === true && timeCrystal.accelPool > 0;
+      var savedExchanged = Number(data.timeCrystal.exchanged);
+      if (isFinite(savedExchanged) && savedExchanged >= 0) {
+        timeCrystal.exchanged = Math.floor(savedExchanged);
+      }
+      var savedAccelUsed = Number(data.timeCrystal.accelUsed);
+      if (isFinite(savedAccelUsed) && savedAccelUsed >= 0) {
+        timeCrystal.accelUsed = savedAccelUsed;
       }
       var savedHarvested = Number(data.timeCrystal.harvested);
       if (isFinite(savedHarvested) && savedHarvested >= 0) {
@@ -1060,7 +1153,10 @@
       timeCrystal.total = BN.from(0);
       timeCrystal.charges = 0;
       timeCrystal.progress = 0;
-      timeCrystal.speedLevel = 0;
+      timeCrystal.accelPool = 0;
+      timeCrystal.accelActive = false;
+      timeCrystal.exchanged = 0;
+      timeCrystal.accelUsed = 0;
       timeCrystal.harvested = 0;
       timeCrystal.harvestActions = 0;
     }
@@ -1072,15 +1168,53 @@
     return true;
   }
 
+  function applyOfflineProgress(elapsedSeconds) {
+    var seconds = Math.floor(Math.max(0, elapsedSeconds));
+    if (seconds < 10) return;
+    var accelSeconds = 0;
+    if (timeCrystal.accelActive && timeCrystal.accelPool > 0) {
+      accelSeconds = Math.min(seconds, timeCrystal.accelPool);
+      timeCrystal.accelPool -= accelSeconds;
+      timeCrystal.accelUsed += accelSeconds;
+      if (timeCrystal.accelPool <= 0) {
+        timeCrystal.accelPool = 0;
+        timeCrystal.accelActive = false;
+      }
+    }
+    var gameSeconds = seconds - accelSeconds + accelSeconds * ACCEL_SPEED;
+    var valueGain = autoRate().mul(BN.from(gameSeconds));
+    if (valueGain.gt(0)) gainValue(valueGain);
+
+    var totalProgress = timeCrystal.progress + gameSeconds;
+    var gainedCharges = Math.floor(totalProgress / CRYSTAL_INTERVAL);
+    timeCrystal.progress = totalProgress - gainedCharges * CRYSTAL_INTERVAL;
+    var accepted = Math.min(gainedCharges, Math.max(0, CRYSTAL_MAX_CHARGES - timeCrystal.charges));
+    timeCrystal.charges += accepted;
+
+    var text = "离线 " + formatDuration(seconds) + "：数值 +" + formatNumber(valueGain);
+    if (accepted > 0) text += "，晶体蓄能 +" + accepted;
+    if (accelSeconds > 0) text += "（加速持续 " + formatDuration(accelSeconds) + "）";
+    offlineSummaryEl.textContent = text;
+    offlineBannerEl.hidden = false;
+    lastTick = Date.now();
+    saveState();
+  }
+
   function loadState() {
     try {
       var raw = window.localStorage.getItem(SAVE_KEY);
       if (raw) {
-        if (applySaveData(JSON.parse(decryptText(raw)))) stats.saveLoads += 1;
+        var data = JSON.parse(decryptText(raw));
+        var savedLastSeen = data && typeof data.lastSeen === "number" ? data.lastSeen : 0;
+        if (applySaveData(data)) stats.saveLoads += 1;
+        if (savedLastSeen > 0 && savedLastSeen <= Date.now()) {
+          applyOfflineProgress((Date.now() - savedLastSeen) / 1000);
+        }
       }
     } catch (error) {
       /* 存档损坏时忽略，使用默认设置 */
     }
+    lastTick = Date.now();
     applyTheme();
   }
 
@@ -1279,7 +1413,23 @@
   });
 
   crystalHarvestEl.addEventListener("click", harvestCrystals);
-  crystalBuyEl.addEventListener("click", buyGameSpeed);
+  crystalExchangeEl.addEventListener("click", exchangeCrystals);
+  crystalStartEl.addEventListener("click", startAcceleration);
+  crystalStopEl.addEventListener("click", stopAcceleration);
+  offlineCloseEl.addEventListener("click", function () {
+    offlineBannerEl.hidden = true;
+  });
+
+  // 离线或切到后台时自动停止加速，剩余时长保留，下次打开需手动重新开始
+  function handleOffline() {
+    stopAccelerationForOffline();
+    saveState();
+  }
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState !== "visible") handleOffline();
+  });
+  window.addEventListener("pagehide", handleOffline);
+  window.addEventListener("beforeunload", handleOffline);
 
   exportSaveEl.addEventListener("click", exportSave);
   importSaveEl.addEventListener("click", function () {
@@ -1343,7 +1493,9 @@
     openStats: openStats,
     openCrystal: openCrystal,
     harvestCrystals: harvestCrystals,
-    buyGameSpeed: buyGameSpeed,
+    exchangeCrystals: exchangeCrystals,
+    startAcceleration: startAcceleration,
+    stopAcceleration: stopAcceleration,
     getCrystal: function () {
       return {
         bank: timeCrystal.bank.toNumber(),
@@ -1351,13 +1503,22 @@
         total: timeCrystal.total.toNumber(),
         charges: timeCrystal.charges,
         progress: timeCrystal.progress,
-        speedLevel: timeCrystal.speedLevel,
-        gameSpeed: gameSpeed(),
-        nextCost: speedCost().toNumber()
+        accelPool: timeCrystal.accelPool,
+        accelActive: timeCrystal.accelActive,
+        exchanged: timeCrystal.exchanged,
+        accelUsed: timeCrystal.accelUsed,
+        gameSpeed: gameSpeed()
       };
     },
     exportSave: exportSave,
     importSave: importSave,
+    settleOffline: applyOfflineProgress,
+    getSettings: function () {
+      return Object.assign({}, settings);
+    },
+    getOfflineReport: function () {
+      return offlineSummaryEl.textContent;
+    },
     grantValue: function (amount) {
       var delta = BN.from(amount);
       if (delta.isFinite() && delta.gt(0)) {
