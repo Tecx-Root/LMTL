@@ -79,10 +79,11 @@
     .nav-item.active { color: var(--gold); border-right: 3px solid var(--gold); background: var(--bg3); }
     .main { flex: 1; min-height: 0; overflow-y: auto; padding: 20px; display: flex; align-items: center; justify-content: center; background: var(--panel); }
     .stage-card { width: min(760px, 100%); margin: auto; padding: 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; }
-    .stage-tabs { display: inline-flex; }
+    .stage-tabs { display: inline-flex; position: sticky; top: 0; z-index: 5; padding: 6px 0; background: var(--panel); }
     .stage-tab { padding: 3px 10px; margin-left: -1px; border: 1px solid var(--panel-border); background: var(--bg2); color: var(--dim); font: 12px Consolas, monospace; cursor: pointer; }
     .stage-tab:first-child { margin-left: 0; }
     .stage-tab.active { position: relative; z-index: 1; border-color: var(--cyan); box-shadow: inset 0 0 0 1px var(--cyan); color: var(--cyan); background: var(--bg3); }
+    .stage-tab-empty { padding: 40px 0; color: var(--dim); font-size: 14px; letter-spacing: .1em; }
     .stage-title { margin: 0; color: var(--text); font-size: 22px; text-align: center; }
     .stage-desc { margin: 0; color: var(--dim); font-size: 13px; line-height: 1.6; text-align: center; }
     .value-core-wrap { position: relative; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 12px; }
@@ -141,7 +142,7 @@
 
     /* 时间晶体 */
     .crystal-panel { width: min(760px, 100%); margin: auto; padding: 32px; display: flex; flex-direction: column; gap: 20px; }
-    .crystal-overview { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .crystal-overview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
     .crystal-metric { padding: 12px 14px; border: 1px solid var(--panel-border); background: var(--bg2); display: flex; flex-direction: column; gap: 6px; }
     .crystal-metric span { color: var(--dim); font-size: 12px; }
     .crystal-metric strong { color: var(--cyan); font: 700 20px Consolas, monospace; }
@@ -222,6 +223,8 @@
             <section class="stage-card" id="stage-card">
               <div class="stage-tabs" id="stage-tabs" role="tablist" aria-label="数值子标签">
                 <button class="stage-tab active" id="stage-tab-upgrade" type="button" role="tab" aria-selected="true" data-stage-tab="upgrade">升级</button>
+                <button class="stage-tab" id="stage-tab-refine" type="button" role="tab" aria-selected="false" data-stage-tab="refine" hidden>精炼</button>
+                <button class="stage-tab" id="stage-tab-transcend" type="button" role="tab" aria-selected="false" data-stage-tab="transcend" hidden>超越</button>
               </div>
               <h2 class="stage-title" id="stage-title">数值</h2>
               <p class="stage-desc" id="stage-desc"></p>
@@ -237,6 +240,7 @@
                 <div class="section-label">购买项</div>
                 <div class="purchase-grid" id="purchase-grid"></div>
               </div>
+              <div class="stage-tab-empty" id="stage-tab-empty" hidden>暂无内容</div>
             </section>
 
             <section class="settings-panel" id="settings-panel" hidden>
@@ -277,6 +281,10 @@
                       <button class="setting-btn" type="button" data-dev-action="setValue">设定数值</button>
                       <input class="setting-input" id="dev-level-input" type="number" min="0" step="1" placeholder="目标等级">
                       <button class="setting-btn" type="button" data-dev-action="setLevels">设定全部等级</button>
+                      <input class="setting-input" id="dev-crystal-input" type="text" placeholder="晶体数量，如 1e6">
+                      <button class="setting-btn" type="button" data-dev-action="setCrystals">设定晶体数量</button>
+                      <select class="setting-input" id="dev-stage-select" aria-label="传送目标阶段"></select>
+                      <button class="setting-btn" type="button" data-dev-action="teleport">传送至该阶段</button>
                     </div>
                     <div class="dev-grid">
                       <button class="setting-btn" type="button" data-dev-action="gain1e3">+1e3 数值</button>
@@ -285,7 +293,7 @@
                       <button class="setting-btn" type="button" data-dev-action="levels">升级 +10 级</button>
                       <button class="setting-btn" type="button" data-dev-action="buyAll">购买全部购买项</button>
                       <button class="setting-btn" type="button" data-dev-action="crystals">+10 时间晶体</button>
-                      <button class="setting-btn" type="button" data-dev-action="charge">填满晶体蓄能</button>
+                      <button class="setting-btn" type="button" data-dev-action="charge">+12 晶体蓄能</button>
                       <button class="setting-btn" type="button" data-dev-action="accelFill">加速时长 +100 秒</button>
                       <button class="setting-btn" type="button" data-dev-action="resetValue">数值归零</button>
                       <button class="setting-btn" type="button" data-dev-action="replayStory">重播开场剧情</button>
@@ -306,10 +314,9 @@
 
             <section class="crystal-panel" id="crystal-panel" hidden>
               <h2 class="settings-title">时间晶体</h2>
-              <p class="stage-desc">时间晶体独立于阶段资源。蓄能满后收获，用晶体兑换加速时长，加速的开始与停止由你决定。</p>
+              <p class="stage-desc">时间晶体独立于阶段资源。蓄能满后收获，用晶体兑换加速时长。</p>
               <div class="crystal-overview">
                 <div class="crystal-metric"><span>当前晶体</span><strong id="crystal-amount">0</strong></div>
-                <div class="crystal-metric"><span>累计晶体</span><strong id="crystal-total">0</strong></div>
                 <div class="crystal-metric"><span>加速余量</span><strong id="crystal-pool">0 秒</strong></div>
                 <div class="crystal-metric"><span>游戏速度</span><strong id="crystal-speed">×1.00</strong></div>
               </div>

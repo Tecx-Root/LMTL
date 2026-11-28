@@ -73,14 +73,15 @@
 
   /*
    * 时间晶体（杂项独立机制，不属于任何阶段资源）
-   * 蓄能间隔 20 秒/次，最多存 12 次。
+   * 基础蓄能 20 秒/次，缓存数量无上限；缓存越多蓄能越快：
+   *   speed = min(3, 1 + 0.2 × 当前缓存数)，收获后缓存清零，速度回到 ×1。
    * 兑换：1 晶体 = 10 秒加速时间；玩家自行开始/停止加速，加速时游戏速度 ×2。
    * 加速时长按真实时间扣除，停止后剩余时长保留；未加速时速度恒为 ×1。
-   * 加速期间蓄能也按 ×2 计算，因此持续收获晶体刚好能维持 ×2 加速，
-   * 停止或忘记收获则加速自然结束，不存在数值膨胀或时间墙。
+   * 加速同样作用于蓄能，缓存加速与时间加速叠加后蓄能倍率仍受 3× 约束。
    */
   var CRYSTAL_INTERVAL = 20;
-  var CRYSTAL_MAX_CHARGES = 12;
+  var CHARGE_SPEED_STEP = 0.2;
+  var CHARGE_SPEED_CAP = 3;
   var ACCEL_SPEED = 2;
   var SECONDS_PER_CRYSTAL = 10;
 
@@ -141,7 +142,14 @@
     { speaker: "旁白", text: "Derterition向微光移去" }
   ];
 
+  var STAGE_TABS = [
+    { id: "upgrade",   name: "升级", unlockStage: "origin" },
+    { id: "refine",    name: "精炼", unlockStage: "start" },
+    { id: "transcend", name: "超越", unlockStage: "frontier" }
+  ];
   var unlockedStages = new Set(["origin"]);
+  var unlockedStageTabs = new Set(["upgrade"]);
+  var activeStageTab = "upgrade";
   var settings = { theme: "deep", newsSpeed: 1, devMode: false, offlineStopAccel: true };
   var devLock = { failures: 0, until: 0 };
   var stats = {
@@ -195,9 +203,10 @@
   var devHintEl = document.getElementById("dev-hint");
   var devValueInputEl = document.getElementById("dev-value-input");
   var devLevelInputEl = document.getElementById("dev-level-input");
+  var devCrystalInputEl = document.getElementById("dev-crystal-input");
+  var devStageSelectEl = document.getElementById("dev-stage-select");
   var crystalPanelEl = document.getElementById("crystal-panel");
   var crystalAmountEl = document.getElementById("crystal-amount");
-  var crystalTotalEl = document.getElementById("crystal-total");
   var crystalSpeedEl = document.getElementById("crystal-speed");
   var crystalProgressEl = document.getElementById("crystal-progress");
   var crystalHintEl = document.getElementById("crystal-hint");
@@ -211,6 +220,8 @@
   var newsTextEl = document.getElementById("news-text");
   var newsTimeEl = document.getElementById("news-time");
   var stageCardEl = document.getElementById("stage-card");
+  var stageTabsEl = document.getElementById("stage-tabs");
+  var stageTabEmptyEl = document.getElementById("stage-tab-empty");
   var settingsPanelEl = document.getElementById("settings-panel");
   var statsPanelEl = document.getElementById("stats-panel");
   var statsViewEl = document.getElementById("stats-view");
@@ -314,10 +325,37 @@
     });
   }
 
+  function stageTabVisible(tab) {
+    return settings.devMode || unlockedStageTabs.has(tab.id) || isUnlocked(tab.unlockStage);
+  }
+
+  function syncStageTabUnlocks() {
+    STAGE_TABS.forEach(function (tab) {
+      if (isUnlocked(tab.unlockStage)) unlockedStageTabs.add(tab.id);
+    });
+  }
+
+  function renderStageTabs() {
+    if (!STAGE_TABS.some(function (tab) {
+      return tab.id === activeStageTab && stageTabVisible(tab);
+    })) activeStageTab = "upgrade";
+    STAGE_TABS.forEach(function (tab) {
+      var button = document.getElementById("stage-tab-" + tab.id);
+      if (!button) return;
+      button.hidden = !stageTabVisible(tab);
+      var active = activeStageTab === tab.id;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", active ? "true" : "false");
+    });
+  }
+
   function renderStage(stage) {
     titleEl.textContent = stage.tab;
     descEl.textContent = stage.chapter + " · " + stage.title;
-    valueCoreWrapEl.hidden = stage.id !== "origin";
+    var showCore = stage.id === "origin" && activeStageTab === "upgrade";
+    valueCoreWrapEl.hidden = !showCore;
+    stageTabEmptyEl.hidden = stage.id !== "origin" || activeStageTab === "upgrade";
+    renderStageTabs();
   }
 
   function formatNumber(value) {
@@ -334,10 +372,40 @@
     return timeCrystal.accelActive ? ACCEL_SPEED : 1;
   }
 
+  function chargeMultiplier() {
+    return Math.min(CHARGE_SPEED_CAP, 1 + CHARGE_SPEED_STEP * timeCrystal.charges);
+  }
+
+  function advanceCharges(seconds) {
+    var remaining = Math.max(0, seconds);
+    var gained = 0;
+    // 缓存达到此数量后倍率恒为上限，可批量结算，避免离线时间过长时逐次循环卡死。
+    var capCharges = Math.round((CHARGE_SPEED_CAP - 1) / CHARGE_SPEED_STEP);
+    while (remaining > 0 && timeCrystal.charges < capCharges) {
+      var need = (CRYSTAL_INTERVAL - timeCrystal.progress) / chargeMultiplier();
+      if (remaining < need) {
+        timeCrystal.progress += remaining * chargeMultiplier();
+        remaining = 0;
+        break;
+      }
+      remaining -= need;
+      timeCrystal.progress = 0;
+      timeCrystal.charges += 1;
+      gained += 1;
+    }
+    if (remaining > 0) {
+      var virtual = timeCrystal.progress + remaining * CHARGE_SPEED_CAP;
+      var batch = Math.floor(virtual / CRYSTAL_INTERVAL);
+      timeCrystal.charges += batch;
+      gained += batch;
+      timeCrystal.progress = virtual - batch * CRYSTAL_INTERVAL;
+    }
+    return gained;
+  }
+
   function renderCrystalUI() {
     if (!crystalPanelEl) return;
     crystalAmountEl.textContent = formatNumber(timeCrystal.bank);
-    crystalTotalEl.textContent = formatNumber(timeCrystal.total);
     crystalPoolEl.textContent = timeCrystal.accelPool.toFixed(1) + " 秒";
     crystalSpeedEl.textContent = "×" + gameSpeed().toFixed(2);
     crystalAccelStatusEl.textContent = timeCrystal.accelActive ? "加速中" : "未激活";
@@ -347,7 +415,7 @@
     crystalHarvestEl.textContent = timeCrystal.charges > 0 ? "收获 " + timeCrystal.charges + " 个时间晶体" : "蓄能中";
     var percent = Math.min(100, (timeCrystal.progress / CRYSTAL_INTERVAL) * 100);
     crystalProgressEl.style.width = percent + "%";
-    crystalHintEl.textContent = "蓄能 " + Math.floor(timeCrystal.progress) + "/" + CRYSTAL_INTERVAL + " 秒 · 已存 " + timeCrystal.charges + "/" + CRYSTAL_MAX_CHARGES + " 次";
+    crystalHintEl.textContent = "蓄能 ×" + chargeMultiplier().toFixed(2) + "（缓存越多越快，上限 ×" + CHARGE_SPEED_CAP + "） · " + Math.floor(timeCrystal.progress) + "/" + CRYSTAL_INTERVAL + " 秒 · 缓存 " + timeCrystal.charges + " 个";
   }
 
   function harvestCrystals() {
@@ -445,8 +513,8 @@
     var crystalCell = resourcesEl.querySelector('[data-res-key="时间晶体"]');
     if (crystalCell) {
       crystalCell.querySelector(".res-amount").textContent = formatNumber(timeCrystal.bank);
-      crystalCell.querySelector(".res-total").textContent = "累计 " + formatNumber(timeCrystal.total);
-      crystalCell.querySelector(".res-rate").textContent = "+" + (gameSpeed() / CRYSTAL_INTERVAL).toFixed(2) + "/秒";
+      crystalCell.querySelector(".res-total").textContent = "";
+      crystalCell.querySelector(".res-rate").textContent = "+" + (gameSpeed() * chargeMultiplier() / CRYSTAL_INTERVAL).toFixed(2) + "/秒";
     }
     if (currentView === "crystal") renderCrystalUI();
     if (currentView === "stats" && statsPanelEl.hidden === false) renderStats();
@@ -596,11 +664,7 @@
     var scaledDt = dt - accelDt + accelDt * ACCEL_SPEED;
     var rate = autoRate();
     if (rate.gt(0) && scaledDt > 0) gainValue(rate.mul(scaledDt));
-    timeCrystal.progress += scaledDt;
-    while (timeCrystal.progress >= CRYSTAL_INTERVAL) {
-      timeCrystal.progress -= CRYSTAL_INTERVAL;
-      if (timeCrystal.charges < CRYSTAL_MAX_CHARGES) timeCrystal.charges += 1;
-    }
+    advanceCharges(scaledDt);
     if (currentView === "crystal") renderCrystalUI();
     refreshUpgradeAffordability();
   }
@@ -646,6 +710,16 @@
     renderSidebar();
     updateMainVisibility();
     renderStats();
+  }
+
+  function renderDevStageOptions() {
+    devStageSelectEl.innerHTML = "";
+    STAGES.forEach(function (stage) {
+      var option = document.createElement("option");
+      option.value = stage.id;
+      option.textContent = stage.chapter + " · " + stage.tab + "（" + stage.title + "）";
+      devStageSelectEl.appendChild(option);
+    });
   }
 
   function renderSettings() {
@@ -753,11 +827,13 @@
       "购买项: " + owned + "\n" +
       "时间晶体: " + timeCrystal.bank.toScientific() + "（累计 " + timeCrystal.total.toScientific() + "）\n" +
       "加速余量: " + timeCrystal.accelPool.toFixed(1) + " 秒（" + (timeCrystal.accelActive ? "加速中" : "未激活") + "）\n" +
+      "蓄能速度: ×" + chargeMultiplier().toFixed(2) + "（缓存 " + timeCrystal.charges + "）\n" +
       "游戏速度: ×" + gameSpeed().toFixed(2);
   }
 
   function setDevMode(on) {
     settings.devMode = !!on;
+    renderStageTabs();
     devPanelEl.hidden = !settings.devMode;
     devUnlockEl.textContent = settings.devMode ? "已开启" : "解锁";
     devKeyInputEl.value = "";
@@ -797,6 +873,23 @@
       UPGRADES.forEach(function (definition) { numeric.levels[definition.id] += 10; });
       renderUpgrades();
       updateValueUI();
+    } else if (action === "setCrystals") {
+      var crystalTarget = BN.from(String(devCrystalInputEl.value).trim());
+      if (!crystalTarget.isFinite() || crystalTarget.lt(0)) {
+        showHint("请输入有效的非负数");
+        return;
+      }
+      timeCrystal.bank = crystalTarget;
+      if (timeCrystal.total.lt(crystalTarget)) timeCrystal.total = crystalTarget;
+      devCrystalInputEl.value = "";
+      updateValueUI();
+    } else if (action === "teleport") {
+      var targetId = devStageSelectEl.value;
+      var targetStage = STAGES.find(function (stage) { return stage.id === targetId; });
+      if (!targetStage) return;
+      unlockedStages.add(targetId);
+      syncStageTabUnlocks();
+      setActiveStage(targetId);
     } else if (action === "buyAll") {
       PURCHASES.forEach(function (definition) {
         if (!hasPurchase(definition.id)) {
@@ -812,7 +905,7 @@
       timeCrystal.total = timeCrystal.total.add(grant);
       updateValueUI();
     } else if (action === "charge") {
-      timeCrystal.charges = CRYSTAL_MAX_CHARGES;
+      timeCrystal.charges += 12;
       updateValueUI();
     } else if (action === "accelFill") {
       timeCrystal.accelPool += 100;
@@ -824,7 +917,9 @@
       startStory(OPENING_STORY);
     } else if (action === "unlock") {
       STAGES.forEach(function (stage) { unlockedStages.add(stage.id); });
+      syncStageTabUnlocks();
       renderSidebar();
+      renderStageTabs();
     } else if (action === "readout") {
       renderDevReadout();
       return;
@@ -900,13 +995,13 @@
 
     html += '<div class="stats-group"><h3 class="stats-group-title">时间晶体</h3>';
     html += statRow("当前晶体", formatNumber(timeCrystal.bank) + " 个");
-    html += statRow("累计收获", formatNumber(timeCrystal.total) + " 个");
     html += statRow("收获次数", timeCrystal.harvestActions + " 次");
     html += statRow("累计兑换", timeCrystal.exchanged + " 个晶体");
     html += statRow("加速余量", timeCrystal.accelPool.toFixed(1) + " 秒");
     html += statRow("累计加速", timeCrystal.accelUsed.toFixed(1) + " 秒");
     html += statRow("游戏速度", "×" + gameSpeed().toFixed(2) + "（" + (timeCrystal.accelActive ? "加速中" : "未激活") + "）");
-    html += statRow("蓄能状态", Math.floor(timeCrystal.progress) + "/" + CRYSTAL_INTERVAL + " 秒 · 已存 " + timeCrystal.charges + "/" + CRYSTAL_MAX_CHARGES);
+    html += statRow("蓄能速度", "×" + chargeMultiplier().toFixed(2));
+    html += statRow("蓄能状态", Math.floor(timeCrystal.progress) + "/" + CRYSTAL_INTERVAL + " 秒 · 缓存 " + timeCrystal.charges);
     html += "</div>";
 
     html += '<div class="stats-group"><h3 class="stats-group-title">时间</h3>';
@@ -983,10 +1078,12 @@
 
   function buildSaveData() {
     return {
-      version: 8,
+      version: 9,
       lastSeen: Date.now(),
       unlockedStages: Array.from(unlockedStages),
+      unlockedStageTabs: Array.from(unlockedStageTabs),
       activeStageId: activeStageId,
+      activeStageTab: activeStageTab,
       settings: {
         theme: settings.theme,
         newsSpeed: settings.newsSpeed,
@@ -1074,6 +1171,15 @@
         }
       });
     }
+    if (Array.isArray(data.unlockedStageTabs)) {
+      data.unlockedStageTabs.forEach(function (id) {
+        if (STAGE_TABS.some(function (tab) { return tab.id === id; })) unlockedStageTabs.add(id);
+      });
+    }
+    if (STAGE_TABS.some(function (tab) { return tab.id === data.activeStageTab; })) {
+      activeStageTab = data.activeStageTab;
+    }
+    syncStageTabUnlocks();
     if (isUnlocked(data.activeStageId)) {
       activeStageId = data.activeStageId;
     }
@@ -1115,7 +1221,7 @@
       if (savedTotal.isFinite() && savedTotal.gte(timeCrystal.bank)) timeCrystal.total = savedTotal;
       var savedCharges = Number(data.timeCrystal.charges);
       if (isFinite(savedCharges) && savedCharges >= 0) {
-        timeCrystal.charges = Math.min(CRYSTAL_MAX_CHARGES, Math.floor(savedCharges));
+        timeCrystal.charges = Math.max(0, Math.floor(savedCharges));
       }
       var savedProgress = Number(data.timeCrystal.progress);
       if (isFinite(savedProgress) && savedProgress >= 0) {
@@ -1185,11 +1291,7 @@
     var valueGain = autoRate().mul(BN.from(gameSeconds));
     if (valueGain.gt(0)) gainValue(valueGain);
 
-    var totalProgress = timeCrystal.progress + gameSeconds;
-    var gainedCharges = Math.floor(totalProgress / CRYSTAL_INTERVAL);
-    timeCrystal.progress = totalProgress - gainedCharges * CRYSTAL_INTERVAL;
-    var accepted = Math.min(gainedCharges, Math.max(0, CRYSTAL_MAX_CHARGES - timeCrystal.charges));
-    timeCrystal.charges += accepted;
+    var accepted = advanceCharges(gameSeconds);
 
     var text = "离线 " + formatDuration(seconds) + "：数值 +" + formatNumber(valueGain);
     if (accepted > 0) text += "，晶体蓄能 +" + accepted;
@@ -1378,7 +1480,9 @@
     if (!exists || isUnlocked(id)) return false;
 
     unlockedStages.add(id);
+    syncStageTabUnlocks();
     renderSidebar();
+    renderStageTabs();
     saveState();
     refreshNewsQueue();
     return true;
@@ -1418,6 +1522,17 @@
   crystalStopEl.addEventListener("click", stopAcceleration);
   offlineCloseEl.addEventListener("click", function () {
     offlineBannerEl.hidden = true;
+  });
+
+  stageTabsEl.addEventListener("click", function (event) {
+    var target = event.target;
+    var id = target && target.dataset ? target.dataset.stageTab : null;
+    var tab = STAGE_TABS.find(function (item) { return item.id === id; });
+    if (!tab || !stageTabVisible(tab)) return;
+    activeStageTab = tab.id;
+    saveState();
+    renderStage(STAGES.find(function (stage) { return stage.id === activeStageId; }));
+    updateValueUI();
   });
 
   // 离线或切到后台时自动停止加速，剩余时长保留，下次打开需手动重新开始
@@ -1482,8 +1597,23 @@
 
   window.LMTL = {
     unlockStage: unlockStage,
+    unlockStageTab: function (id) {
+      var tab = STAGE_TABS.find(function (item) { return item.id === id; });
+      if (!tab) return false;
+      unlockedStageTabs.add(id);
+      renderStageTabs();
+      saveState();
+      return true;
+    },
     getUnlockedStages: function () {
       return Array.from(unlockedStages);
+    },
+    getStageTabs: function () {
+      return {
+        unlocked: Array.from(unlockedStageTabs),
+        active: activeStageTab,
+        visible: STAGE_TABS.filter(stageTabVisible).map(function (tab) { return tab.id; })
+      };
     },
     playStory: startStory,
     replayOpening: function () {
@@ -1507,6 +1637,7 @@
         accelActive: timeCrystal.accelActive,
         exchanged: timeCrystal.exchanged,
         accelUsed: timeCrystal.accelUsed,
+        chargeMultiplier: chargeMultiplier(),
         gameSpeed: gameSpeed()
       };
     },
@@ -1551,8 +1682,10 @@
   };
 
   loadState();
+  syncStageTabUnlocks();
   renderSidebar();
   renderSettings();
+  renderDevStageOptions();
   setActiveStage(activeStageId);
   renderUpgrades();
   renderPurchases();

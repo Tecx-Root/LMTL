@@ -267,6 +267,11 @@ body {
 
 .stage-tabs {
   display: inline-flex;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: 6px 0;
+  background: var(--panel);
 }
 
 .stage-tab {
@@ -290,6 +295,13 @@ body {
   box-shadow: inset 0 0 0 1px var(--cyan);
   color: var(--cyan);
   background: var(--bg3);
+}
+
+.stage-tab-empty {
+  padding: 40px 0;
+  color: var(--dim);
+  font-size: 14px;
+  letter-spacing: 0.1em;
 }
 
 .stage-title {
@@ -665,7 +677,7 @@ body {
 
 .crystal-overview {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
